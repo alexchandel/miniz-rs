@@ -135,7 +135,7 @@ enum
   TINFL_FLAG_HAS_MORE_INPUT = 2,
   TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF = 4,
   TINFL_FLAG_COMPUTE_ADLER32 = 8
-};
+}
 
 // High level decompression functions:
 // tinfl_decompress_mem_to_heap() decompresses a block in memory to a heap block allocated via malloc().
@@ -163,7 +163,7 @@ struct tinfl_decompressor_tag; typedef struct tinfl_decompressor_tag tinfl_decom
 #define TINFL_LZ_DICT_SIZE 32768
 
 // Return status.
-typedef enum
+enum tinfl_status
 {
   TINFL_STATUS_BAD_PARAM = -3,
   TINFL_STATUS_ADLER32_MISMATCH = -2,
@@ -171,7 +171,7 @@ typedef enum
   TINFL_STATUS_DONE = 0,
   TINFL_STATUS_NEEDS_MORE_INPUT = 1,
   TINFL_STATUS_HAS_MORE_OUTPUT = 2
-} tinfl_status;
+}
 
 // Initializes the decompressor to its initial state.
 #define tinfl_init(r) do { (r)->m_state = 0; } MZ_MACRO_END
@@ -186,13 +186,13 @@ enum
 {
   TINFL_MAX_HUFF_TABLES = 3, TINFL_MAX_HUFF_SYMBOLS_0 = 288, TINFL_MAX_HUFF_SYMBOLS_1 = 32, TINFL_MAX_HUFF_SYMBOLS_2 = 19,
   TINFL_FAST_LOOKUP_BITS = 10, TINFL_FAST_LOOKUP_SIZE = 1 << TINFL_FAST_LOOKUP_BITS
-};
+}
 
-typedef struct
+struct tinfl_huff_table
 {
   mz_uint8 m_code_size[TINFL_MAX_HUFF_SYMBOLS_0];
   mz_int16 m_look_up[TINFL_FAST_LOOKUP_SIZE], m_tree[TINFL_MAX_HUFF_SYMBOLS_0 * 2];
-} tinfl_huff_table;
+}
 
 #if MINIZ_HAS_64BIT_REGISTERS
   #define TINFL_USE_64BIT_BITBUF 1
@@ -213,7 +213,7 @@ struct tinfl_decompressor_tag
   size_t m_dist_from_out_buf_start;
   tinfl_huff_table m_tables[TINFL_MAX_HUFF_TABLES];
   mz_uint8 m_raw_header[4], m_len_codes[TINFL_MAX_HUFF_SYMBOLS_0 + TINFL_MAX_HUFF_SYMBOLS_1 + 137];
-};
+}
 
 // ------------------- Low-level Compression API Definitions
 
@@ -225,7 +225,7 @@ struct tinfl_decompressor_tag
 enum
 {
   TDEFL_HUFFMAN_ONLY = 0, TDEFL_DEFAULT_MAX_PROBES = 128, TDEFL_MAX_PROBES_MASK = 0xFFF
-};
+}
 
 // TDEFL_WRITE_ZLIB_HEADER: If set, the compressor outputs a zlib header before the deflate data, and the Adler-32 of the source data at the end. Otherwise, you'll get raw deflate data.
 // TDEFL_COMPUTE_ADLER32: Always compute the adler-32 of the input data (even when not writing zlib headers).
@@ -245,7 +245,7 @@ enum
   TDEFL_FILTER_MATCHES                = 0x20000,
   TDEFL_FORCE_ALL_STATIC_BLOCKS       = 0x40000,
   TDEFL_FORCE_ALL_RAW_BLOCKS          = 0x80000
-};
+}
 
 // High level compression functions:
 // tdefl_compress_mem_to_heap() compresses a block in memory to a heap block allocated via malloc().
@@ -749,7 +749,7 @@ common_exit:
 }
 
 // Higher level helper functions.
-void *tinfl_decompress_mem_to_heap(const void *pSrc_buf, size_t src_buf_len, size_t *pOut_len, int flags)
+fn tinfl_decompress_mem_to_heap(pSrc_buf: *const libc::c_void, src_buf_len: size_t, pOut_len: *const size_t, flags: int) -> *mut c_void
 {
   tinfl_decompressor decomp; void *pBuf = NULL, *pNew_buf; size_t src_buf_ofs = 0, out_buf_capacity = 0;
   *pOut_len = 0;
@@ -866,7 +866,7 @@ static const mz_uint8 s_tdefl_large_dist_extra[128] = {
   13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13 };
 
 // Radix sorts tdefl_sym_freq[] array by 16-bit key m_key. Returns ptr to sorted values.
-typedef struct { mz_uint16 m_key, m_sym_index; } tdefl_sym_freq;
+struct tdefl_sym_freq { m_key: u16, m_sym_index: u16 }
 fn tdefl_radix_sort_syms(num_syms: mz_uint, pSyms0: *const tdefl_sym_freq, pSyms1: *const tdefl_sym_freq) -> *const tdefl_sym_freq
 {
   mz_uint32 total_passes = 2, pass_shift, pass, i, hist[256 * 2]; tdefl_sym_freq* pCur_syms = pSyms0, *pNew_syms = pSyms1; MZ_CLEAR_OBJ(hist);
@@ -905,7 +905,7 @@ fn tdefl_calculate_minimum_redundancy(A: *mut tdefl_sym_freq, n: c_int)
 }
 
 // Limits canonical Huffman code table's max code size.
-enum { TDEFL_MAX_SUPPORTED_HUFF_CODESIZE = 32 };
+enum CodeSize { TDEFL_MAX_SUPPORTED_HUFF_CODESIZE = 32 }
 fn tdefl_huffman_enforce_max_code_size(pNum_codes: *const c_int, code_list_len: c_int, max_code_size: c_int)
 {
   int i; mz_uint32 total = 0; if (code_list_len <= 1) return;
@@ -982,7 +982,7 @@ fn tdefl_optimize_huffman_table(d: &mut tdefl_compressor, table_num: c_int, tabl
     d->m_huff_count[2][18] = (mz_uint16)(d->m_huff_count[2][18] + 1); packed_code_sizes[num_packed_code_sizes++] = 18; packed_code_sizes[num_packed_code_sizes++] = (mz_uint8)(rle_z_count - 11); \
 } rle_z_count = 0; } }
 
-static mz_uint8 s_tdefl_packed_code_size_syms_swizzle[] = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
+const s_tdefl_packed_code_size_syms_swizzle: [u8, ..19] = [ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 ];
 
 fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
 {
@@ -1064,7 +1064,7 @@ fn tdefl_start_static_block(d: &mut tdefl_compressor)
   TDEFL_PUT_BITS(1, 2);
 }
 
-static const mz_uint mz_bitmasks[17] = { 0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF };
+const mz_bitmasks: [mz_uint, ..17] = [ 0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF ];
 
 #[cfg(and(target_arch = "x86_64", target_endian = "little"))]
 fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
