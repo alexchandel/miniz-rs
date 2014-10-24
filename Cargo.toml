@@ -1,0 +1,5 @@
+[package]
+name = "miniz"
+version = "0.0.0"
+authors = ["alexchandel@gmail.com"]
+
