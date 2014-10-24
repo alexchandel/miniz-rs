@@ -307,7 +307,7 @@ macro_rules! TINFL_CR_RETURN_FOREVER( (state_index, result) => ( { loop { TINFL_
 // reads ahead more than it needs to. Currently TINFL_GET_BYTE() pads the end of the stream with 0's in this scenario.
 macro_rules! TINFL_GET_BYTE( (state_index:expr, c:ident) => (loop {
   if (pIn_buf_cur >= pIn_buf_end) {
-    for ( ; ; ) {
+    loop {
       if (decomp_flags & TINFL_FLAG_HAS_MORE_INPUT) {
         TINFL_CR_RETURN(state_index, TINFL_STATUS_NEEDS_MORE_INPUT);
         if (pIn_buf_cur < pIn_buf_end) {
@@ -319,12 +319,12 @@ macro_rules! TINFL_GET_BYTE( (state_index:expr, c:ident) => (loop {
         break;
       }
     }
-  } else c = *pIn_buf_cur++; break; }; );
+  } else {c = *pIn_buf_cur++;} break; }; );
 )
 
-macro_rules! TINFL_NEED_BITS( (state_index, n) => (do { mz_uint c; TINFL_GET_BYTE(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8; } while (num_bits < (mz_uint)(n))); )
-macro_rules! TINFL_SKIP_BITS( (state_index, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS(state_index, n); } bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
-macro_rules! TINFL_GET_BITS( (state_index, b, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS(state_index, n); } b = bit_buf & ((1 << (n)) - 1); bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
+macro_rules! TINFL_NEED_BITS( (state_index, n) => (do { mz_uint c; TINFL_GET_BYTE!(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8; } while (num_bits < (mz_uint)(n))); )
+macro_rules! TINFL_SKIP_BITS( (state_index, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
+macro_rules! TINFL_GET_BITS( (state_index, b, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } b = bit_buf & ((1 << (n)) - 1); bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
 
 // TINFL_HUFF_BITBUF_FILL() is only used rarely, when the number of bytes remaining in the input buffer falls below 2.
 // It reads just enough bytes from the input stream that are needed to decode the next Huffman code (and absolutely no more). It works by trying to fully decode a
@@ -342,7 +342,7 @@ macro_rules! TINFL_HUFF_BITBUF_FILL( (state_index:expr, pHuff:ident) => (
        do {
           temp = (pHuff)->m_tree[~temp + ((bit_buf >> code_len++) & 1)];
        } while ((temp < 0) && (num_bits >= (code_len + 1))); if (temp >= 0) break;
-    } TINFL_GET_BYTE(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8;
+    } TINFL_GET_BYTE!(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8;
     if !(num_bits < 15) {break;};
   });
 )
@@ -394,7 +394,7 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
     bit_buf = num_bits = dist = counter = num_extra = r.m_zhdr0 = r.m_zhdr1 = 0; r.m_z_adler32 = r.m_check_adler32 = 1;
     if (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER)
     {
-      TINFL_GET_BYTE(1, r.m_zhdr0); TINFL_GET_BYTE(2, r.m_zhdr1);
+      TINFL_GET_BYTE!(1, r.m_zhdr0); TINFL_GET_BYTE!(2, r.m_zhdr1);
       counter = (((r.m_zhdr0 * 256 + r.m_zhdr1) % 31 != 0) || (r.m_zhdr1 & 32) || ((r.m_zhdr0 & 15) != 8));
       if (!(decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF)) {counter |= (((1u << (8u + (r.m_zhdr0 >> 4))) > 32768u) || ((out_buf_size_mask + 1) < (size_t)(1u << (8u + (r.m_zhdr0 >> 4)))))};
       if (counter) { TINFL_CR_RETURN_FOREVER(36, TINFL_STATUS_FAILED); }
