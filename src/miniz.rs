@@ -748,11 +748,19 @@ fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: int) -> Option<Vec<u8>> {
 
 // tinfl_decompress_mem_to_mem() decompresses a block in memory to another block in memory.
 // Returns TINFL_DECOMPRESS_MEM_TO_MEM_FAILED on failure, or the number of bytes written on success.
-fn tinfl_decompress_mem_to_mem(pOut_buf: *mut c_void, out_buf_len: size_t, pSrc_buf: *const c_void, src_buf_len: size_t, flags: int) -> size_t
+fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: int) -> uint
 {
-  let decomp: tinfl_decompressor; let status: tinfl_status; tinfl_init(&decomp);
-  status = tinfl_decompress(&decomp, pSrc_buf as *const u8, &src_buf_len, pOut_buf as *const u8, pOut_buf as *const u8, &out_buf_len, (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
-  return if (status != TINFL_STATUS_DONE) {TINFL_DECOMPRESS_MEM_TO_MEM_FAILED} else {out_buf_len};
+  let mut decomp: tinfl_decompressor; tinfl_init(&decomp);
+  let mut src_buf_len: uint = src_buf.len();
+  let mut out_buf_len: uint = out_buf.len();
+  let status: tinfl_status = tinfl_decompress(
+    &mut decomp,
+    src_buf.as_ptr(),
+    &src_buf_len,
+    out_buf.as_ptr(),
+    &out_buf_len,
+    (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  if (status != TINFL_STATUS_DONE) {TINFL_DECOMPRESS_MEM_TO_MEM_FAILED} else {out_buf_len};
 }
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
