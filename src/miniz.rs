@@ -765,34 +765,36 @@ fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: int) ->
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
 // Returns 1 on success or 0 on failure.
-fn tinfl_decompress_mem_to_callback(pIn_buf: *const c_void, pIn_buf_size: *const size_t, pPut_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> int
+fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> (bool, uint)
 {
-  let result: int = 0;
-  let decomp: tinfl_decompressor;
-  let pDict: *const u8 = MZ_MALLOC(TINFL_LZ_DICT_SIZE) as *const u8; let in_buf_ofs: size_t = 0; let dict_ofs: size_t = 0;
-  if (pDict.is_null()) {
-    return TINFL_STATUS_FAILED;
-  }
-  tinfl_init(&decomp);
-  loop
-  {
-    let in_buf_size: size_t = *pIn_buf_size - in_buf_ofs; let dst_buf_size: size_t = TINFL_LZ_DICT_SIZE - dict_ofs;
-    let status: tinfl_status = tinfl_decompress(&decomp, pIn_buf as *const u8 + in_buf_ofs, &in_buf_size, pDict, pDict + dict_ofs, &dst_buf_size,
+  let decomp: tinfl_decompressor; tinfl_init(&decomp);
+  let dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
+  let in_buf_ofs: uint = 0;
+  let dict_ofs: uint = 0;
+  let result: bool = false;
+  loop {
+    let in_buf_size: uint = in_buf.len() - in_buf_ofs;
+    let dst_buf_size: uint = TINFL_LZ_DICT_SIZE - dict_ofs;
+    let status: tinfl_status = tinfl_decompress(
+      &mut decomp,
+      in_buf[in_buf_ofs..].as_ptr(),
+      &mut in_buf_size,
+      dict[].as_ptr(),
+      dict[dict_ofs..],
+      &mut dst_buf_size,
       (flags & !(TINFL_FLAG_HAS_MORE_INPUT | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF)));
+
+    // Increase input buffer to reflect data copied out.
     in_buf_ofs += in_buf_size;
-    if ((dst_buf_size) && (!(*pPut_buf_func)(pDict + dict_ofs, dst_buf_size as int, pPut_buf_user))){
-      break;
-    }
-    if (status != TINFL_STATUS_HAS_MORE_OUTPUT)
-    {
-      result = (status == TINFL_STATUS_DONE);
+
+    if (dst_buf_size > 0) && !put_buf_func(dict[dict_ofs..].as_ptr(), dst_buf_size, pPut_buf_user) {break;}
+    if status != TINFL_STATUS_HAS_MORE_OUTPUT {
+      result = status == TINFL_STATUS_DONE;
       break;
     }
     dict_ofs = (dict_ofs + dst_buf_size) & (TINFL_LZ_DICT_SIZE - 1);
   }
-  MZ_FREE(pDict);
-  *pIn_buf_size = in_buf_ofs;
-  return result;
+  (result, in_buf_ofs)
 }
 
 // ------------------- Low-level Compression (independent from all decompression API's)
