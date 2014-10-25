@@ -89,14 +89,14 @@ enum DecompressionFlags {
   TINFL_FLAG_COMPUTE_ADLER32 = 8
 }
 
-const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: size_t = -1 as size_t;
+const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
 type tinfl_put_buf_func_ptr = fn (pBuf: *const c_void, len: int, pUser: *mut c_void) -> c_int;
 
 type tinfl_decompressor = tinfl_decompressor_tag;
 
 // Max size of LZ dictionary.
-const TINFL_LZ_DICT_SIZE: size_t = 32768;
+const TINFL_LZ_DICT_SIZE: uint = 32768;
 
 // Return status.
 enum tinfl_status
@@ -705,7 +705,8 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
 ///  Function returns a pointer to the decompressed data, or NULL on failure.
 ///  *pOut_len will be set to the decompressed data's size, which could be larger than src_buf_len on uncompressible data.
 ///  The caller must call mz_free() on the returned block when it's no longer needed.
-fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: int) -> Option<Vec<u8>> {
+pub fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: int) -> Option<Vec<u8>>
+{
   let mut decomp: tinfl_decompressor;
   tinfl_init(&decomp);
   // Create output buffer.
@@ -748,7 +749,7 @@ fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: int) -> Option<Vec<u8>> {
 
 // tinfl_decompress_mem_to_mem() decompresses a block in memory to another block in memory.
 // Returns TINFL_DECOMPRESS_MEM_TO_MEM_FAILED on failure, or the number of bytes written on success.
-fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: int) -> uint
+pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: int) -> uint
 {
   let mut decomp: tinfl_decompressor; tinfl_init(&decomp);
   let mut src_buf_len: uint = src_buf.len();
@@ -765,7 +766,7 @@ fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: int) ->
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
 // Returns 1 on success or 0 on failure.
-fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> (bool, uint)
+pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> (bool, uint)
 {
   let decomp: tinfl_decompressor; tinfl_init(&decomp);
   let dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
