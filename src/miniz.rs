@@ -396,7 +396,7 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
   num_bits = r.m_num_bits; bit_buf = r.m_bit_buf; dist = r.m_dist; counter = r.m_counter; num_extra = r.m_num_extra; dist_from_out_buf_start = r.m_dist_from_out_buf_start;
   // TINFL_CR_BEGIN
   {
-
+    /*
     bit_buf = num_bits = dist = counter = num_extra = r.m_zhdr0 = r.m_zhdr1 = 0; r.m_z_adler32 = r.m_check_adler32 = 1;
     if (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER)
     {
@@ -405,8 +405,7 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
       if (!(decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF)) {counter |= (((1u << (8u + (r.m_zhdr0 >> 4))) > 32768u) || ((out_buf_size_mask + 1) < (size_t)(1u << (8u + (r.m_zhdr0 >> 4)))))};
       if (counter) { TINFL_CR_RETURN_FOREVER(36, TINFL_STATUS_FAILED); }
     }
-
-    loop // /*
+    loop
     {
       TINFL_GET_BITS(3, r.m_final, 3); r.m_type = r.m_final >> 1;
       if (r.m_type == 0)
@@ -664,17 +663,16 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
         }
       }
       if (r.m_final & 1) as bool {break;}
-    }//*/
+    }
     if (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER)
     {
       TINFL_SKIP_BITS(32, num_bits & 7); counter = 0; while counter < 4 { let s: mz_uint; if (num_bits) {TINFL_GET_BITS(41, s, 8);} else {TINFL_GET_BYTE(42, s);}; r.m_z_adler32 = (r.m_z_adler32 << 8) | s; counter+=1; }
     }
-    TINFL_CR_RETURN_FOREVER(34, TINFL_STATUS_DONE);
-
+    TINFL_CR_RETURN_FOREVER(34, TINFL_STATUS_DONE); */
   // TINFL_CR_FINISH
   }
 
-  fn common_exit() {
+  let common_exit = || {
     r.m_num_bits = num_bits; r.m_bit_buf = bit_buf; r.m_dist = dist; r.m_counter = counter; r.m_num_extra = num_extra; r.m_dist_from_out_buf_start = dist_from_out_buf_start;
     *pIn_buf_size = pIn_buf_cur - pIn_buf_next; *pOut_buf_size = pOut_buf_cur - pOut_buf_next;
     if ((decomp_flags & (TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32)) && (status >= 0))
@@ -695,7 +693,7 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
       }
       r.m_check_adler32 = (s2 << 16) + s1; if ((status == TINFL_STATUS_DONE) && (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER) && (r.m_check_adler32 != r.m_z_adler32)) {status = TINFL_STATUS_ADLER32_MISMATCH;};
     }
-  }
+  };
   return status;
 }
 
