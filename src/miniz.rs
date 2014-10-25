@@ -110,8 +110,12 @@ enum tinfl_status
 }
 
 // Initializes the decompressor to its initial state.
-macro_rules! tinfl_init( (r) => (loop { (r)->m_state = 0; break;};); )
-macro_rules! tinfl_get_adler32((r) => ((r)->m_check_adler32);)
+fn tinfl_init(r: &mut tinfl_decompressor) {
+  r.m_state = 0;
+}
+fn tinfl_get_adler32(r: &tinfl_decompressor) -> mz_ulong {
+  r.m_check_adler32
+}
 
 // Internal/private bits follow.
 enum InternalPriviteBits
@@ -295,23 +299,24 @@ fn mz_crc32(crc: mz_ulong, ptr: *const u8, buf_len: size_t) -> mz_ulong
 
 // ------------------- Low-level Decompression (completely independent from all compression API's)
 
-macro_rules! TINFL_MEMCPY((d, s, l) => (memcpy(d, s, l););)
-macro_rules! TINFL_MEMSET((p, c, l) => (memset(p, c, l););)
+macro_rules! TINFL_MEMCPY(($d:expr, $s:expr, $l:expr) => (memcpy(d, s, l););)
+macro_rules! TINFL_MEMSET(($p:expr, $c:expr, $l:expr) => (memset(p, c, l););)
 
 // #define TINFL_CR_BEGIN switch(r->m_state) { case 0:
-macro_rules! TINFL_CR_RETURN( (state_index: expr, result: expr) => ( { status = result; r->m_state = state_index; goto common_exit; case state_index:; }; ); )
-macro_rules! TINFL_CR_RETURN_FOREVER( (state_index, result) => ( { loop { TINFL_CR_RETURN(state_index, result); } }; ); )
+macro_rules! TINFL_CR_RETURN( ($state_index: expr, $result: expr) => ( { status = result; r->m_state = state_index; goto common_exit; case state_index:; }; ); )
+macro_rules! TINFL_CR_RETURN_FOREVER( ($state_index:expr, $result:expr) => ( { loop { TINFL_CR_RETURN(state_index, result); } }; ); )
 // #define TINFL_CR_FINISH }
 
 // TODO: If the caller has indicated that there's no more input, and we attempt to read beyond the input buf, then something is wrong with the input because the inflator never
 // reads ahead more than it needs to. Currently TINFL_GET_BYTE() pads the end of the stream with 0's in this scenario.
-macro_rules! TINFL_GET_BYTE( (state_index:expr, c:ident) => (loop {
+macro_rules! TINFL_GET_BYTE( ($state_index:expr, $c:expr) => (loop {
   if (pIn_buf_cur >= pIn_buf_end) {
     loop {
       if (decomp_flags & TINFL_FLAG_HAS_MORE_INPUT) {
         TINFL_CR_RETURN(state_index, TINFL_STATUS_NEEDS_MORE_INPUT);
         if (pIn_buf_cur < pIn_buf_end) {
-          c = *pIn_buf_cur++;
+          c = *pIn_buf_cur;
+          pIn_buf_cur += 1;
           break;
         }
       } else {
@@ -319,18 +324,19 @@ macro_rules! TINFL_GET_BYTE( (state_index:expr, c:ident) => (loop {
         break;
       }
     }
-  } else {c = *pIn_buf_cur++;} break; }; );
+  } else {c = *pIn_buf_cur; pIn_buf_cur += 1;} break; }; );
 )
 
-macro_rules! TINFL_NEED_BITS( (state_index, n) => (do { mz_uint c; TINFL_GET_BYTE!(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8; } while (num_bits < (mz_uint)(n))); )
-macro_rules! TINFL_SKIP_BITS( (state_index, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
-macro_rules! TINFL_GET_BITS( (state_index, b, n) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } b = bit_buf & ((1 << (n)) - 1); bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
+macro_rules! TINFL_NEED_BITS( ($state_index:expr, $n:expr) => (do { mz_uint c; TINFL_GET_BYTE!(state_index, c); bit_buf |= (((tinfl_bit_buf_t)c) << num_bits); num_bits += 8; } while (num_bits < (mz_uint)(n))); )
+macro_rules! TINFL_SKIP_BITS( ($state_index:expr, $n:expr) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
+macro_rules! TINFL_GET_BITS( ($state_index:expr, $b:expr, $n:expr) => (do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } b = bit_buf & ((1 << (n)) - 1); bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END); )
 
 // TINFL_HUFF_BITBUF_FILL() is only used rarely, when the number of bytes remaining in the input buffer falls below 2.
 // It reads just enough bytes from the input stream that are needed to decode the next Huffman code (and absolutely no more). It works by trying to fully decode a
 // Huffman code by using whatever bits are currently present in the bit buffer. If this fails, it reads another byte, and tries again until it succeeds or until the
 // bit buffer contains >=15 bits (deflate's max. Huffman code size).
-macro_rules! TINFL_HUFF_BITBUF_FILL( (state_index:expr, pHuff:ident) => (
+macro_rules! TINFL_HUFF_BITBUF_FILL( (
+  $state_index:expr, $pHuff:expr) => (
   loop {
     temp = (pHuff)->m_look_up[bit_buf & (TINFL_FAST_LOOKUP_SIZE - 1)];
     if (temp >= 0) {
@@ -351,7 +357,7 @@ macro_rules! TINFL_HUFF_BITBUF_FILL( (state_index:expr, pHuff:ident) => (
 // beyond the final byte of the deflate stream. (In other words, when this macro wants to read another byte from the input, it REALLY needs another byte in order to fully
 // decode the next Huffman code.) Handling this properly is particularly important on raw deflate (non-zlib) streams, which aren't followed by a byte aligned adler-32.
 // The slow path is only executed at the very end of the input buffer.
-macro_rules! TINFL_HUFF_DECODE( (state_index, sym, pHuff) => (loop {
+macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (loop {
   int temp; mz_uint code_len, c;
   if (num_bits < 15) {
     if ((pIn_buf_end - pIn_buf_cur) < 2) {
