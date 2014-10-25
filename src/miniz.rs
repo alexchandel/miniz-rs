@@ -48,7 +48,7 @@
      #define MINIZ_HAS_64BIT_REGISTERS 1
 */
 
-#![feature(macro_rules)]
+#![feature(macro_rules, slicing_syntax)]
 
 extern crate libc;
 
@@ -705,36 +705,45 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
 ///  Function returns a pointer to the decompressed data, or NULL on failure.
 ///  *pOut_len will be set to the decompressed data's size, which could be larger than src_buf_len on uncompressible data.
 ///  The caller must call mz_free() on the returned block when it's no longer needed.
-fn tinfl_decompress_mem_to_heap(pSrc_buf: *const libc::c_void, src_buf_len: size_t, pOut_len: *const size_t, flags: int) -> *mut c_void
-{
+fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: int) -> Option<Vec<u8>> {
   let mut decomp: tinfl_decompressor;
-  let mut pBuf: *mut c_void = null(); let mut pNew_buf: *mut c_void;
-  let src_buf_ofs: size_t = 0; let out_buf_capacity: size_t = 0;
-  *pOut_len = 0;
   tinfl_init(&decomp);
-  loop
-  {
-    let src_buf_size: size_t = src_buf_len - src_buf_ofs;
-    let dst_buf_size: size_t = out_buf_capacity - *pOut_len;
-    let new_out_buf_capacity: size_t;
-    let status: tinfl_status = tinfl_decompress(&decomp, pSrc_buf as *const u8 + src_buf_ofs, &src_buf_size, pBuf as *const u8, if !pBuf.is_null() {(pBuf as *const u8) + *pOut_len} else {null()}, &dst_buf_size,
+  // Create output buffer.
+  // WARNING: we no longer pass a NULL pointer to tinfl_decompress
+  // on the first pass (as miniz.c did). TODO: ensure this decompresses correctly.
+  let mut out_buf = Vec::from_elem(128, 0u8);
+  // Track position in input buffer
+  let mut src_buf_ofs: uint = 0;
+  // Track position in output buffer
+  let mut out_buf_ofs: uint = 0;
+  loop {
+    let mut src_buf_size: uint = src_buf.len() - src_buf_ofs;
+    let mut out_buf_size: uint = out_buf.len() - out_buf_ofs;
+    let status: tinfl_status = tinfl_decompress(
+      &mut decomp,
+      src_buf[src_buf_ofs..].as_ptr(),
+      &mut src_buf_size,
+      out_buf[].as_ptr(),
+      out_buf[out_buf_ofs..].as_ptr(),
+      &mut out_buf_size,
       (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
-    if ((status < 0) || (status == TINFL_STATUS_NEEDS_MORE_INPUT))
-    {
-      MZ_FREE(pBuf); *pOut_len = 0; return NULL;
-    }
+
+    if (status < 0) || (status == TINFL_STATUS_NEEDS_MORE_INPUT) {return None;}
+    // now, status is either TINFL_STATUS_HAS_MORE_OUTPUT or TINFL_STATUS_DONE
+
+    // Increase buffer offsets to reflect newly copied data.
+    // tinfl_decompress writes this back into src_buf_size and out_buf_size
     src_buf_ofs += src_buf_size;
-    *pOut_len += dst_buf_size;
+    out_buf_ofs += out_buf_size;
+
+    // If all data is copied, end.
     if status == TINFL_STATUS_DONE {break;}
-    new_out_buf_capacity = out_buf_capacity * 2; if new_out_buf_capacity < 128 {new_out_buf_capacity = 128;}
-    pNew_buf = MZ_REALLOC(pBuf, new_out_buf_capacity);
-    if (!pNew_buf)
-    {
-      MZ_FREE(pBuf); *pOut_len = 0; return NULL;
-    }
-    pBuf = pNew_buf; out_buf_capacity = new_out_buf_capacity;
+    // Otherwise, double the output buffer capacity & length.
+    out_buf.grow(out_buf.len(), 0u8);
   }
-  return pBuf;
+  // Set length of output buffer to number of bytes copied, instead of capacity.
+  unsafe {out_buf.set_len(out_buf_ofs)};
+  Some(out_buf)
 }
 
 // tinfl_decompress_mem_to_mem() decompresses a block in memory to another block in memory.
