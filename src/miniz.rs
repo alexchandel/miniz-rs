@@ -1989,7 +1989,7 @@ fn tdefl_compress_buffer(d: &mut tdefl_compressor, pIn_buf: *const c_void, in_bu
 fn tdefl_init(d: &mut tdefl_compressor, pPut_buf_func: tdefl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> tdefl_status
 {
   d.m_pPut_buf_func = pPut_buf_func; d.m_pPut_buf_user = pPut_buf_user;
-  d.m_flags = (mz_uint)(flags); d.m_max_probes[0] = 1 + ((flags & 0xFFF) + 2) / 3; d.m_greedy_parsing = (flags & TDEFL_GREEDY_PARSING_FLAG) != 0;
+  d.m_flags = flags as mz_uint; d.m_max_probes[0] = 1 + ((flags & 0xFFF) + 2) / 3; d.m_greedy_parsing = (flags & TDEFL_GREEDY_PARSING_FLAG) != 0;
   d.m_max_probes[1] = 1 + (((flags & 0xFFF) >> 2) + 2) / 3;
   if (!(flags & TDEFL_NONDETERMINISTIC_PARSING_FLAG)) {for i in d.m_hash.iter_mut() {i = 0};}
   d.m_lookahead_pos = d.m_lookahead_size = d.m_dict_size = d.m_total_lz_bytes = d.m_lz_code_buf_dict_pos = d.m_bits_in = 0;
@@ -2039,7 +2039,7 @@ fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: *mut c_void)
   if (new_size > p.m_capacity)
   {
     let new_capacity: size_t = p.m_capacity; let pNew_buf: *mut u8; if !p.m_expandable {return false;};
-    loop { new_capacity = MZ_MAX(128u, new_capacity << 1u); if !(new_size > new_capacity) {break;} }
+    loop { new_capacity = max(128u, new_capacity << 1u); if !(new_size > new_capacity) {break;} }
     pNew_buf = MZ_REALLOC(p.m_pBuf, new_capacity) as *mut u8; if !pNew_buf {return false;}
     p.m_pBuf = pNew_buf; p.m_capacity = new_capacity;
   }
