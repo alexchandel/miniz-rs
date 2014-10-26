@@ -49,6 +49,7 @@
 */
 
 #![feature(macro_rules, slicing_syntax)]
+#![crate_type = "lib"]
 
 extern crate libc;
 
