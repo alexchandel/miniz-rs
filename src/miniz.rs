@@ -48,15 +48,17 @@
      #define MINIZ_HAS_64BIT_REGISTERS 1
 */
 
-#![feature(macro_rules, slicing_syntax)]
+#![feature(macro_rules, slicing_syntax, globs)]
 #![crate_type = "lib"]
 
 extern crate libc;
 
 use libc::{size_t, c_ulong, c_int, c_uchar, c_void};
 use std::ptr::{copy_memory, set_memory, null};
+use std::slice::raw::buf_as_slice;
 use std::mem::{size_of};
 use std::cmp::{max, min};
+use memory_specific_constants::*;
 
 // ------------------- zlib-style API Definitions.
 
