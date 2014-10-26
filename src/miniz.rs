@@ -860,41 +860,50 @@ const s_tdefl_large_dist_extra: [u8, ..128] = [
   12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,
   13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13 ];
 
+#[packed]
 struct tdefl_sym_freq { m_key: u16, m_sym_index: u16 }
 /// Radix sorts tdefl_sym_freq[] array by 16-bit key m_key. Returns ptr to sorted values.
-fn tdefl_radix_sort_syms(num_syms: mz_uint, pSyms0: *const tdefl_sym_freq, pSyms1: *const tdefl_sym_freq) -> *const tdefl_sym_freq
+fn tdefl_radix_sort_syms <'a>(num_syms: uint, pSyms0: &'a mut [tdefl_sym_freq], pSyms1: &'a mut [tdefl_sym_freq]) -> &'a mut [tdefl_sym_freq]
 {
-  let total_passes: u32 = 2; let pass_shift: u32 = 0; let pass: u32 = 0; let i: u32 = 0; let hist = [0u32, ..256 * 2];
-  let mut pCur_syms: *const tdefl_sym_freq = pSyms0; let mut pNew_syms: *const tdefl_sym_freq = pSyms1; //MZ_CLEAR_OBJ(hist);
-  while i < num_syms { let freq: mz_uint = pSyms0[i].m_key; hist[freq & 0xFF]+=1; hist[256 + ((freq >> 8) & 0xFF)]+=1; i+=1}
+  let total_passes: uint = 2; let i: uint = 0; let hist = [0u, ..256 * 2];
+  let mut pCur_syms: &mut [tdefl_sym_freq] = pSyms0; let mut pNew_syms: &mut [tdefl_sym_freq] = pSyms1;
+  while i < num_syms { let freq: uint = pSyms0[i].m_key as uint; hist[freq & 0xFF]+=1; hist[256 + ((freq >> 8) & 0xFF)]+=1; i+=1}
   while (total_passes > 1) && (num_syms == hist[(total_passes - 1) * 256]) {total_passes-=1};
+
+  let pass_shift: uint = 0; let pass: uint = 0;
   while pass < total_passes
   {
-    let pHist: *const u32 = &hist[pass << 8];
-    let mut offsets: [mz_uint, ..256]; let cur_ofs: mz_uint = 0;
+    let pHist: &[uint] = hist[pass << 8 .. 256];
+    let mut offsets: [uint, ..256]; let cur_ofs: uint = 0;
     i = 0;
     while i < 256 { offsets[i] = cur_ofs; cur_ofs += pHist[i]; i+=1 }
     i = 0;
-    while i < num_syms { pNew_syms[offsets[(pCur_syms[i].m_key >> pass_shift) & 0xFF]+=1] = pCur_syms[i]; i+=1 }
-    { let t: *const tdefl_sym_freq = pCur_syms; pCur_syms = pNew_syms; pNew_syms = t; }
-    pass+=1; pass_shift += 8;
+    while i < num_syms {
+      let temp_index = (pCur_syms[i].m_key >> pass_shift) as uint & 0xFF;
+      pNew_syms[offsets[temp_index]] = pCur_syms[i];
+      offsets[temp_index] += 1;
+      i+=1;
+    }
+    { let t = pCur_syms; pCur_syms = pNew_syms; pNew_syms = t; }
+    pass += 1; pass_shift += 8;
   }
   return pCur_syms;
 }
 
 /// tdefl_calculate_minimum_redundancy() originally written by: Alistair Moffat, alistair@cs.mu.oz.au, Jyrki Katajainen, jyrki@diku.dk, November 1996.
-fn tdefl_calculate_minimum_redundancy(A: *mut tdefl_sym_freq, n: c_int)
+fn tdefl_calculate_minimum_redundancy(A: &mut [tdefl_sym_freq], n: uint)
 {
-  let root: c_int = 0; let leaf: c_int = 2; let mut next: c_int = 1; let avbl: c_int = 1; let used: c_int = 0; let dpth: c_int = 0;
+  let root: uint = 0; let leaf: uint = 2; let mut next: uint = 1; let avbl: uint = 1; let used: uint = 0; let dpth: c_int = 0;
   if n==0 {return;} else {if n==1 { A[0].m_key = 1; return; }}
   A[0].m_key += A[1].m_key;
   while (next < n-1)
   {
     if (leaf>=n || A[root].m_key<A[leaf].m_key) { A[next].m_key = A[root].m_key; A[root].m_key = next as u16; root+=1; } else {A[next].m_key = A[leaf].m_key; leaf+=1;}
-    if (leaf>=n || (root<next && A[root].m_key<A[leaf].m_key)) { A[next].m_key = (A[next].m_key + A[root].m_key) as u16; A[root].m_key = next as u16; root+=1 } else {A[next].m_key = (A[next].m_key + A[leaf].m_key) as u16; leaf+=1;}
+    if (leaf>=n || (root<next && A[root].m_key<A[leaf].m_key)) { A[next].m_key = (A[next].m_key + A[root].m_key) as u16; A[root].m_key = next as u16; root+=1 }
+    else {A[next].m_key = (A[next].m_key + A[leaf].m_key) as u16; leaf+=1;}
     next+=1;
   }
-  A[n-2].m_key = 0; next=n-3; while next>=0 {A[next].m_key = A[A[next].m_key].m_key+1; next-=1;}
+  A[n-2].m_key = 0; next=n-3; while next>=0 {A[next].m_key = A[A[next].m_key as uint].m_key+1; next-=1;}
   root = n-2; next = n-1;
   while (avbl>0)
   {
@@ -905,61 +914,61 @@ fn tdefl_calculate_minimum_redundancy(A: *mut tdefl_sym_freq, n: c_int)
 }
 
 // Limits canonical Huffman code table's max code size.
-enum CodeSize { TDEFL_MAX_SUPPORTED_HUFF_CODESIZE = 32 }
-fn tdefl_huffman_enforce_max_code_size(pNum_codes: *const c_int, code_list_len: c_int, max_code_size: c_int)
+const TDEFL_MAX_SUPPORTED_HUFF_CODESIZE: uint = 32;
+fn tdefl_huffman_enforce_max_code_size(pNum_codes: &mut[uint], code_list_len: uint, max_code_size: uint)
 {
-  let i: int; let total: u32 = 0; if (code_list_len <= 1) {return;}
+  let i: uint; let total: u32 = 0; if (code_list_len <= 1) {return;}
   i = max_code_size + 1;
   while i <= TDEFL_MAX_SUPPORTED_HUFF_CODESIZE {pNum_codes[max_code_size] += pNum_codes[i]; i+=1;}
   i = max_code_size;
   while i > 0 {total += ((pNum_codes[i] as u32) << (max_code_size - i)); i-=1;}
-  while (total != (1u64 << max_code_size))
+  while total != (1 << max_code_size)
   {
     pNum_codes[max_code_size]-=1;
     i = max_code_size - 1;
-    while i > 0 {if (pNum_codes[i]) { pNum_codes[i]-=1; pNum_codes[i + 1] += 2; break; }; i-=1;}
+    while i > 0 {if pNum_codes[i] != 0 { pNum_codes[i]-=1; pNum_codes[i + 1] += 2; break; }; i-=1;}
     total-=1;
   }
 }
 
-fn tdefl_optimize_huffman_table(d: &mut tdefl_compressor, table_num: c_int, table_len: c_int, code_size_limit: c_int, static_table: bool)
+fn tdefl_optimize_huffman_table(d: &mut tdefl_compressor, table_num: uint, table_len: uint, code_size_limit: uint, static_table: bool)
 {
-  let i: c_int = 0; let j: c_int; let l: c_int; let num_codes= [0 as c_int, 1 + TDEFL_MAX_SUPPORTED_HUFF_CODESIZE]; let next_code= [0 as mz_uint, ..TDEFL_MAX_SUPPORTED_HUFF_CODESIZE + 1];
+  let i: uint = 0; let j: uint; let l: uint; let num_codes= [0 as uint, ..1 + TDEFL_MAX_SUPPORTED_HUFF_CODESIZE]; let next_code= [0 as uint, ..TDEFL_MAX_SUPPORTED_HUFF_CODESIZE + 1];
   if static_table
   {
-    while i < table_len { num_codes[d.m_huff_code_sizes[table_num][i]]+=1; i+=1 }
+    while i < table_len { num_codes[d.m_huff_code_sizes[table_num][i] as uint]+=1; i+=1 }
   }
   else
   {
-    let syms0: [tdefl_sym_freq, ..TDEFL_MAX_HUFF_SYMBOLS]; let syms1: [tdefl_sym_freq, ..TDEFL_MAX_HUFF_SYMBOLS]; let pSyms: *const tdefl_sym_freq;
-    let num_used_syms: int = 0;
-    let pSym_count: *const u16 = &d.m_huff_count[table_num][0];
-    while i < table_len { if pSym_count[i] { syms0[num_used_syms].m_key = pSym_count[i] as u16; syms0[num_used_syms].m_sym_index = i as u16; num_used_syms+=1}; i+=1 }
+    let syms0: [tdefl_sym_freq, ..TDEFL_MAX_HUFF_SYMBOLS]; let syms1: [tdefl_sym_freq, ..TDEFL_MAX_HUFF_SYMBOLS]; let pSyms: &mut[tdefl_sym_freq];
+    let num_used_syms: uint = 0;
+    let pSym_count: &[u16] = d.m_huff_count[table_num];
+    while i < table_len { if pSym_count[i]!=0 { syms0[num_used_syms].m_key = pSym_count[i] as u16; syms0[num_used_syms].m_sym_index = i as u16; num_used_syms+=1}; i+=1 }
 
     pSyms = tdefl_radix_sort_syms(num_used_syms, syms0, syms1); tdefl_calculate_minimum_redundancy(pSyms, num_used_syms);
 
     i = 0;
-    while i < num_used_syms { num_codes[pSyms[i].m_key]+=1; i+=1}
+    while i < num_used_syms { num_codes[pSyms[i].m_key as uint]+=1; i+=1}
 
-    tdefl_huffman_enforce_max_code_size(num_codes, num_used_syms, code_size_limit);
+    tdefl_huffman_enforce_max_code_size(&mut num_codes, num_used_syms, code_size_limit);
 
-    d.m_huff_code_sizes[table_num].set_memory(0u8);
-    d.m_huff_codes[table_num].set_memory(0u8);
+    for i in d.m_huff_code_sizes[table_num].iter_mut() {*i = 0u8};
+    for i in d.m_huff_codes[table_num].iter_mut() {*i = 0u16};
     i = 1; j = num_used_syms;
     while i <= code_size_limit {
       l = num_codes[i];
-      while l > 0 { j-=1; d.m_huff_code_sizes[table_num][pSyms[j].m_sym_index] = i as u8; l-=1 }
+      while l > 0 { j-=1; d.m_huff_code_sizes[table_num][pSyms[j].m_sym_index as uint] = i as u8; l-=1 }
       i+=1
     }
   }
 
-  next_code[1] = 0; j = 0; i = 2; while i <= code_size_limit { next_code[i] = j = ((j + num_codes[i - 1]) << 1); i+=1 };
+  next_code[1] = 0; j = 0; i = 2; while i <= code_size_limit { j = ((j + num_codes[i - 1]) << 1); next_code[i] = j; i+=1 };
 
   i = 0;
   while i < table_len
   {
-    let rev_code: mz_uint = 0; let code: mz_uint; let code_size: mz_uint;
-    if (code_size = d.m_huff_code_sizes[table_num][i]) == 0 {continue;}
+    let rev_code: uint = 0; let code: uint; let code_size: uint = d.m_huff_code_sizes[table_num][i] as uint;
+    if code_size == 0 {continue;}
     code = next_code[code_size]; next_code[code_size]+=1; l = code_size; while l > 0 { rev_code = (rev_code << 1) | (code & 1); l-=1; code >>= 1};
     d.m_huff_codes[table_num][i] = rev_code as u16;
     i+=1
