@@ -259,8 +259,6 @@ struct tdefl_compressor
 
 // ------------------- End of Header: Implementation follows. (If you only want the header, define MINIZ_HEADER_FILE_ONLY.)
 
-fn MZ_ASSERT (x: bool) { assert!(x);}
-
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
   macro_rules! MZ_READ_LE16( (p) => (*((p) as *const u16)); )
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
@@ -991,7 +989,7 @@ fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
     ({
       let bits: mz_uint = $b;
       let len: mz_uint = $l;
-      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
         if d.m_pOutput_buf < d.m_pOutput_buf_end{
@@ -1105,7 +1103,7 @@ fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
 
   while packed_code_sizes_index < num_packed_code_sizes
   {
-    let code: mz_uint = packed_code_sizes[packed_code_sizes_index]; packed_code_sizes_index+=1; MZ_ASSERT(code < TDEFL_MAX_HUFF_SYMBOLS_2);
+    let code: mz_uint = packed_code_sizes[packed_code_sizes_index]; packed_code_sizes_index+=1; assert!(code < TDEFL_MAX_HUFF_SYMBOLS_2);
     TDEFL_PUT_BITS!(d.m_huff_codes[2][code], d.m_huff_code_sizes[2][code]);
     if code >= 16 {TDEFL_PUT_BITS!(packed_code_sizes[packed_code_sizes_index], "\02\03\07"[code - 16]); packed_code_sizes_index+=1;}
   }
@@ -1117,7 +1115,7 @@ fn tdefl_start_static_block(d: &mut tdefl_compressor)
     ({
       let bits: mz_uint = $b;
       let len: mz_uint = $l;
-      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
         if d.m_pOutput_buf < d.m_pOutput_buf_end{
@@ -1162,7 +1160,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
     ({
       let bits: mz_uint = $b;
       let len: mz_uint = $l;
-      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
         if d.m_pOutput_buf < d.m_pOutput_buf_end{
@@ -1201,7 +1199,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let match_len: mz_uint = pLZ_codes[0];
       let match_dist: mz_uint = *((pLZ_codes + 1) as *const u16); pLZ_codes += 3;
 
-      MZ_ASSERT(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
+      assert!(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
       TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
       TDEFL_PUT_BITS_FAST!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
 
@@ -1213,7 +1211,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       sym = if match_dist < 512 {s0} else {s1};
       num_extra_bits = if match_dist < 512 {n0} else {n1};
 
-      MZ_ASSERT(d.m_huff_code_sizes[1][sym]);
+      assert!(d.m_huff_code_sizes[1][sym]);
       TDEFL_PUT_BITS_FAST!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
       TDEFL_PUT_BITS_FAST!(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
     }
@@ -1221,7 +1219,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
     {
       let lit: mz_uint = *pLZ_codes;
       pLZ_codes+=1;
-      MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
+      assert!(d.m_huff_code_sizes[0][lit]);
       TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
 
       if (((flags & 2) == 0) && (pLZ_codes < pLZ_code_buf_end))
@@ -1229,7 +1227,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
         flags >>= 1;
         lit = *pLZ_codes;
         pLZ_codes+=1;
-        MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
+        assert!(d.m_huff_code_sizes[0][lit]);
         TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
 
         if (((flags & 2) == 0) && (pLZ_codes < pLZ_code_buf_end))
@@ -1237,7 +1235,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
           flags >>= 1;
           lit = *pLZ_codes;
           pLZ_codes+=1;
-          MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
+          assert!(d.m_huff_code_sizes[0][lit]);
           TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
         }
       }
@@ -1281,7 +1279,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
     ({
       let bits: mz_uint = $b;
       let len: mz_uint = $l;
-      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
         if d.m_pOutput_buf < d.m_pOutput_buf_end{
@@ -1305,7 +1303,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let sym: mz_uint; let num_extra_bits: mz_uint;
       let match_len: mz_uint = pLZ_codes[0]; let match_dist: mz_uint = (pLZ_codes[1] | (pLZ_codes[2] << 8)); pLZ_codes += 3;
 
-      MZ_ASSERT(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
+      assert!(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
       TDEFL_PUT_BITS!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
       TDEFL_PUT_BITS!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
 
@@ -1317,14 +1315,14 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       {
         sym = s_tdefl_large_dist_sym[match_dist >> 8]; num_extra_bits = s_tdefl_large_dist_extra[match_dist >> 8];
       }
-      MZ_ASSERT(d.m_huff_code_sizes[1][sym]);
+      assert!(d.m_huff_code_sizes[1][sym]);
       TDEFL_PUT_BITS!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
       TDEFL_PUT_BITS!(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
     }
     else
     {
       let lit: mz_uint = *pLZ_codes; pLZ_codes+=1;
-      MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
+      assert!(d.m_huff_code_sizes[0][lit]);
       TDEFL_PUT_BITS!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
     }
     flags >>= 1;
@@ -1357,7 +1355,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
     ({
       let bits: mz_uint = $b;
       let len: mz_uint = $l;
-      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
         if d.m_pOutput_buf < d.m_pOutput_buf_end{
@@ -1373,7 +1371,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
   d.m_pOutput_buf = pOutput_buf_start;
   d.m_pOutput_buf_end = d.m_pOutput_buf + TDEFL_OUT_BUF_SIZE - 16;
 
-  MZ_ASSERT(!d.m_output_flush_remaining);
+  assert!(!d.m_output_flush_remaining);
   d.m_output_flush_ofs = 0;
   d.m_output_flush_remaining = 0;
 
@@ -1435,7 +1433,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
     }
   }
 
-  MZ_ASSERT(d.m_pOutput_buf < d.m_pOutput_buf_end);
+  assert!(d.m_pOutput_buf < d.m_pOutput_buf_end);
 
   set_memory(&d.m_huff_count[0][0], 0, size_of(d.m_huff_count[0][0]) * TDEFL_MAX_HUFF_SYMBOLS_0);
   set_memory(&d.m_huff_count[1][0], 0, size_of(d.m_huff_count[1][0]) * TDEFL_MAX_HUFF_SYMBOLS_1);
@@ -1489,7 +1487,7 @@ fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: mz_uint, max_dist: 
   let q: *const u16;
   let c01: u16 = TDEFL_READ_UNALIGNED_WORD!(&d.m_dict[pos + match_len - 1]);
   let s01: u16 = TDEFL_READ_UNALIGNED_WORD!(s);
-  MZ_ASSERT(max_match_len <= TDEFL_MAX_MATCH_LEN); if max_match_len <= match_len {return;}
+  assert!(max_match_len <= TDEFL_MAX_MATCH_LEN); if max_match_len <= match_len {return;}
   loop {
     loop {
       num_probes_left -= 1;
@@ -1544,7 +1542,7 @@ fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: mz_uint, max_dist: 
   let q: *const u8;
   let c0: u8 = d.m_dict[pos + match_len];
   let c1: u8 = d.m_dict[pos + match_len - 1];
-  MZ_ASSERT(max_match_len <= TDEFL_MAX_MATCH_LEN); if max_match_len <= match_len {return;}
+  assert!(max_match_len <= TDEFL_MAX_MATCH_LEN); if max_match_len <= match_len {return;}
   loop
   {
     loop
@@ -1656,7 +1654,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
           let s0: u32; let s1: u32;
           cur_match_len = min(cur_match_len, lookahead_size);
 
-          MZ_ASSERT((cur_match_len >= TDEFL_MIN_MATCH_LEN) && (cur_match_dist >= 1) && (cur_match_dist <= TDEFL_LZ_DICT_SIZE));
+          assert!((cur_match_len >= TDEFL_MIN_MATCH_LEN) && (cur_match_dist >= 1) && (cur_match_dist <= TDEFL_LZ_DICT_SIZE));
 
           cur_match_dist-=1;
 
@@ -1686,7 +1684,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
       lookahead_pos += cur_match_len;
       dict_size = min(dict_size + cur_match_len, TDEFL_LZ_DICT_SIZE);
       cur_pos = (cur_pos + cur_match_len) & TDEFL_LZ_DICT_SIZE_MASK;
-      MZ_ASSERT(lookahead_size >= cur_match_len);
+      assert!(lookahead_size >= cur_match_len);
       lookahead_size -= cur_match_len;
 
       if (pLZ_code_buf > &d.m_lz_code_buf[TDEFL_LZ_CODE_BUF_SIZE - 8])
@@ -1752,7 +1750,7 @@ fn tdefl_record_match(d: &mut tdefl_compressor, match_len: mz_uint, match_dist: 
   let s0: u32;
   let s1: u32;
 
-  MZ_ASSERT((match_len >= TDEFL_MIN_MATCH_LEN) && (match_dist >= 1) && (match_dist <= TDEFL_LZ_DICT_SIZE));
+  assert!((match_len >= TDEFL_MIN_MATCH_LEN) && (match_dist >= 1) && (match_dist <= TDEFL_LZ_DICT_SIZE));
 
   d.m_total_lz_bytes += match_len;
 
@@ -1878,7 +1876,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
     }
     // Move the lookahead forward by len_to_move bytes.
     d.m_lookahead_pos += len_to_move;
-    MZ_ASSERT(d.m_lookahead_size >= len_to_move);
+    assert!(d.m_lookahead_size >= len_to_move);
     d.m_lookahead_size -= len_to_move;
     d.m_dict_size = min(d.m_dict_size + len_to_move, TDEFL_LZ_DICT_SIZE);
     // Check if it's time to flush the current LZ codes to the internal output buffer.
@@ -1991,7 +1989,7 @@ fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_size: *c
 // tdefl_compress_buffer() always consumes the entire input buffer.
 fn tdefl_compress_buffer(d: &mut tdefl_compressor, pIn_buf: *const c_void, in_buf_size: size_t, flush: tdefl_flush) -> tdefl_status
 {
-  MZ_ASSERT(d.m_pPut_buf_func); return tdefl_compress(d, pIn_buf, &in_buf_size, null(), null(), flush);
+  assert!(d.m_pPut_buf_func); return tdefl_compress(d, pIn_buf, &in_buf_size, null(), null(), flush);
 }
 
 // Initializes the compressor.
