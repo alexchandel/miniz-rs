@@ -113,7 +113,7 @@ enum tinfl_status
 fn tinfl_init(r: &mut tinfl_decompressor) {
   r.m_state = 0;
 }
-fn tinfl_get_adler32(r: &tinfl_decompressor) -> mz_ulong {
+fn tinfl_get_adler32(r: &tinfl_decompressor) -> u32 {
   r.m_check_adler32
 }
 
