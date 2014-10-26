@@ -53,6 +53,9 @@
 extern crate libc;
 
 use libc::{size_t, c_ulong, c_int, c_uchar, c_void};
+use std::ptr::{copy_memory, set_memory, null};
+use std::mem::{size_of};
+use std::cmp::{max, min};
 
 // ------------------- zlib-style API Definitions.
 
@@ -242,11 +245,7 @@ struct tdefl_compressor
 
 // ------------------- End of Header: Implementation follows. (If you only want the header, define MINIZ_HEADER_FILE_ONLY.)
 
-macro_rules! MZ_ASSERT((x) => (assert(x));)
-
-macro_rules! MZ_MAX( (a,b) => (((a)>(b))?(a):(b)); )
-macro_rules! MZ_MIN( (a,b) => (((a)<(b))?(a):(b)); )
-macro_rules! MZ_CLEAR_OBJ( (obj) => (memset(&(obj), 0, sizeof(obj))); )
+fn MZ_ASSERT (x: bool) { assert!(x);}
 
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
   macro_rules! MZ_READ_LE16( (p) => (*((p) as *const u16)); )
@@ -2032,11 +2031,19 @@ struct tdefl_output_buffer
   m_expandable: bool
 }
 
-fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: *mut c_void) -> bool
+impl tdefl_output_buffer {
+  fn clear(&mut self) {
+    self.m_size = 0; self.m_capacity = 0;
+    self.m_pBuf = null();
+    self.m_expandable = false;
+  }
+}
+
+fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: &mut tdefl_output_buffer) -> bool
 {
-  let p: *mut tdefl_output_buffer = pUser as *mut tdefl_output_buffer;
+  let p: &mut tdefl_output_buffer = pUser as &mut tdefl_output_buffer;
   let new_size: size_t = p.m_size + len;
-  if (new_size > p.m_capacity)
+  if new_size > p.m_capacity
   {
     let new_capacity: size_t = p.m_capacity; let pNew_buf: *mut u8; if !p.m_expandable {return false;};
     loop { new_capacity = max(128u, new_capacity << 1u); if !(new_size > new_capacity) {break;} }
@@ -2056,12 +2063,12 @@ fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: *mut c_void)
 //  Function returns a pointer to the compressed data, or NULL on failure.
 //  *pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data.
 //  The caller must free() the returned block when it's no longer needed.
-fn tdefl_compress_mem_to_heap(pSrc_buf: *const c_void, src_buf_len: size_t, pOut_len: *mut size_t, flags: int) -> *mut c_void
+fn tdefl_compress_mem_to_heap(pSrc_buf: *const c_void, src_buf_len: size_t, pOut_len: *mut size_t, flags: int) -> *mut u8
 {
-  let out_buf: tdefl_output_buffer; MZ_CLEAR_OBJ(out_buf);
+  let out_buf: tdefl_output_buffer; out_buf.clear();
   if !pOut_len {return false;} else {*pOut_len = 0;};
   out_buf.m_expandable = true;
-  if !tdefl_compress_mem_to_output(pSrc_buf, src_buf_len, tdefl_output_buffer_putter, &out_buf, flags) {return NULL;};
+  if !tdefl_compress_mem_to_output(pSrc_buf, src_buf_len, tdefl_output_buffer_putter, &out_buf, flags) {return null();};
   *pOut_len = out_buf.m_size; return out_buf.m_pBuf;
 }
 
@@ -2069,7 +2076,7 @@ fn tdefl_compress_mem_to_heap(pSrc_buf: *const c_void, src_buf_len: size_t, pOut
 // Returns 0 on failure.
 fn tdefl_compress_mem_to_mem(pOut_buf: *mut c_void, out_buf_len: size_t, pSrc_buf: *const c_void, src_buf_len: size_t, flags: int) -> size_t
 {
-  let out_buf: tdefl_output_buffer; MZ_CLEAR_OBJ(out_buf);
+  let out_buf: tdefl_output_buffer; out_buf.clear();
   if !pOut_buf {return 0;};
   out_buf.m_pBuf = pOut_buf as *mut u8; out_buf.m_capacity = out_buf_len;
   if !tdefl_compress_mem_to_output(pSrc_buf, src_buf_len, tdefl_output_buffer_putter, &out_buf, flags) {return 0;};
