@@ -2047,7 +2047,7 @@ fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: &mut tdefl_o
   {
     let new_capacity: size_t = p.m_capacity; let pNew_buf: *mut u8; if !p.m_expandable {return false;};
     loop { new_capacity = max(128u, new_capacity << 1u); if !(new_size > new_capacity) {break;} }
-    pNew_buf = MZ_REALLOC(p.m_pBuf, new_capacity) as *mut u8; if !pNew_buf {return false;}
+    pNew_buf = /*MZ_REALLOC*/(p.m_pBuf, new_capacity) as *mut u8; if !pNew_buf {return false;}
     p.m_pBuf = pNew_buf; p.m_capacity = new_capacity;
   }
   copy_memory((p.m_pBuf as *mut u8) + p.m_size, pBuf, len); p.m_size = new_size;
