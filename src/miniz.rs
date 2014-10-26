@@ -48,7 +48,7 @@
      #define MINIZ_HAS_64BIT_REGISTERS 1
 */
 
-#![feature(macro_rules, slicing_syntax, globs)]
+#![feature(macro_rules, slicing_syntax, globs, unboxed_closures)]
 #![crate_type = "lib"]
 
 extern crate libc;
@@ -192,7 +192,7 @@ enum OtherCompressionFlags
 }
 
 // Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
-type tdefl_put_buf_func_ptr = fn (pBuf: *const c_void, len: uint, pUser: *mut c_void) -> bool;
+type tdefl_put_buf_func_ptr<'a> = &'a FnMut<(*const u8, uint), bool> + 'a;
 
 const TDEFL_MAX_HUFF_TABLES: uint = 3;
 const TDEFL_MAX_HUFF_SYMBOLS_0: uint = 288;
@@ -242,9 +242,9 @@ enum tdefl_flush
 }
 
 // tdefl's compression state structure.
-struct tdefl_compressor
+struct tdefl_compressor <'a>
 {
-  m_pPut_buf_func: tdefl_put_buf_func_ptr,
+  m_pPut_buf_func: tdefl_put_buf_func_ptr<'a>,
   m_pPut_buf_user: *mut c_void,
   m_flags: mz_uint, m_max_probes: [mz_uint, ..2],
   m_greedy_parsing: int,
@@ -1454,7 +1454,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
     if (d.m_pPut_buf_func)
     {
       *d.m_pIn_buf_size = d.m_pSrc - d.m_pIn_buf as *const u8;
-      if (!(*d.m_pPut_buf_func)(d.m_output_buf, n, d.m_pPut_buf_user)){
+      if (! d.m_pPut_buf_func.call_mut((d.m_output_buf, n)) ) {
         return (d.m_prev_return_status = TDEFL_STATUS_PUT_BUF_FAILED);
       }
     }
@@ -2006,9 +2006,9 @@ fn tdefl_compress_buffer(d: &mut tdefl_compressor, pIn_buf: *const c_void, in_bu
 // pBut_buf_func: If NULL, output data will be supplied to the specified callback. In this case, the user should call the tdefl_compress_buffer() API for compression.
 // If pBut_buf_func is NULL the user should always call the tdefl_compress() API.
 // flags: See the above enums (TDEFL_HUFFMAN_ONLY, TDEFL_WRITE_ZLIB_HEADER, etc.)
-fn tdefl_init(d: &mut tdefl_compressor, pPut_buf_func: tdefl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> tdefl_status
+fn tdefl_init(d: &mut tdefl_compressor, pPut_buf_func: tdefl_put_buf_func_ptr, flags: int) -> tdefl_status
 {
-  d.m_pPut_buf_func = pPut_buf_func; d.m_pPut_buf_user = pPut_buf_user;
+  d.m_pPut_buf_func = pPut_buf_func; d.m_pPut_buf_user = null();
   d.m_flags = flags as mz_uint; d.m_max_probes[0] = 1 + ((flags & 0xFFF) + 2) / 3; d.m_greedy_parsing = (flags & TDEFL_GREEDY_PARSING_FLAG) != 0;
   d.m_max_probes[1] = 1 + (((flags & 0xFFF) >> 2) + 2) / 3;
   if (!(flags & TDEFL_NONDETERMINISTIC_PARSING_FLAG)) {for i in d.m_hash.iter_mut() {i = 0};}
@@ -2036,38 +2036,41 @@ fn tdefl_get_adler32(d: &mut tdefl_compressor) -> u32
 }
 
 // tdefl_compress_mem_to_output() compresses a block to an output stream. The above helpers use this function internally.
-fn tdefl_compress_mem_to_output(in_buf: &[u8], pPut_buf_func: tdefl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> bool
+fn tdefl_compress_mem_to_output(in_buf: &[u8], put_buf_func: tdefl_put_buf_func_ptr, flags: int) -> bool
 {
   let comp: tdefl_compressor;
   let mut succeeded: bool;
-  succeeded = (tdefl_init(&mut comp, pPut_buf_func, pPut_buf_user, flags) == TDEFL_STATUS_OKAY);
+  succeeded = (tdefl_init(&mut comp, put_buf_func, flags) == TDEFL_STATUS_OKAY);
   succeeded = succeeded && (tdefl_compress_buffer(&mut comp, in_buf.as_ptr(), in_buf.len(), TDEFL_FINISH) == TDEFL_STATUS_DONE);
   return succeeded;
 }
 
 struct tdefl_output_buffer
 {
-  m_size: size_t, m_capacity: size_t,
+  m_size: uint, m_capacity: uint,
   m_pBuf: *mut u8,
   m_expandable: bool
 }
 
 impl tdefl_output_buffer {
-  fn clear(&mut self) {
-    self.m_size = 0; self.m_capacity = 0;
-    self.m_pBuf = null();
-    self.m_expandable = false;
+  fn new() -> tdefl_output_buffer {
+    tdefl_output_buffer {
+      m_size: 0, m_capacity: 0,
+      m_pBuf: null() as *mut u8,
+      m_expandable: false
+    }
   }
 }
 
-fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: &mut tdefl_output_buffer) -> bool
+fn tdefl_output_buffer_putter(pBuf: *const u8, len: uint, pUser: &mut tdefl_output_buffer) -> bool
 {
   let p: &mut tdefl_output_buffer = pUser as &mut tdefl_output_buffer;
-  let new_size: size_t = p.m_size + len;
+  let new_size: uint = p.m_size + len;
   if new_size > p.m_capacity
   {
-    let new_capacity: size_t = p.m_capacity; let pNew_buf: *mut u8; if !p.m_expandable {return false;};
-    loop { new_capacity = max(128u, new_capacity << 1u); if !(new_size > new_capacity) {break;} }
+    if !p.m_expandable {return false;};
+    let new_capacity: uint = p.m_capacity; let pNew_buf: *mut u8;
+    loop { new_capacity = max(128u, new_capacity << 1u); if new_size <= new_capacity {break;} }
     pNew_buf = /*MZ_REALLOC*/(p.m_pBuf, new_capacity) as *mut u8; if !pNew_buf {return false;}
     p.m_pBuf = pNew_buf; p.m_capacity = new_capacity;
   }
@@ -2084,23 +2087,24 @@ fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: &mut tdefl_o
 //  Function returns a pointer to the compressed data, or NULL on failure.
 //  *pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data.
 //  The caller must free() the returned block when it's no longer needed.
-fn tdefl_compress_mem_to_heap(pSrc_buf: *const c_void, src_buf_len: size_t, pOut_len: *mut size_t, flags: int) -> *mut u8
+fn tdefl_compress_mem_to_heap(src_buf: &[u8], pOut_len: *mut uint, flags: int) -> *mut u8
 {
-  let out_buf: tdefl_output_buffer; out_buf.clear();
+  let out_buf = tdefl_output_buffer::new();
   if !pOut_len {return false;} else {*pOut_len = 0;};
   out_buf.m_expandable = true;
-  if !tdefl_compress_mem_to_output(pSrc_buf, src_buf_len, tdefl_output_buffer_putter, &out_buf, flags) {return null();};
+  let mut callback = |&mut: pBuf: *const u8, len: uint| {tdefl_output_buffer_putter(pBuf, len, &mut out_buf)};;
+  if !tdefl_compress_mem_to_output(src_buf, &mut callback, flags) {return null();};
   *pOut_len = out_buf.m_size; return out_buf.m_pBuf;
 }
 
 // tdefl_compress_mem_to_mem() compresses a block in memory to another block in memory.
 // Returns 0 on failure.
-fn tdefl_compress_mem_to_mem(pOut_buf: *mut c_void, out_buf_len: size_t, pSrc_buf: *const c_void, src_buf_len: size_t, flags: int) -> size_t
+fn tdefl_compress_mem_to_mem(dst_buf: &mut[u8], src_buf: &[u8], flags: int) -> uint
 {
-  let out_buf: tdefl_output_buffer; out_buf.clear();
-  if !pOut_buf {return 0;};
-  out_buf.m_pBuf = pOut_buf as *mut u8; out_buf.m_capacity = out_buf_len;
-  if !tdefl_compress_mem_to_output(pSrc_buf, src_buf_len, tdefl_output_buffer_putter, &out_buf, flags) {return 0;};
+  let out_buf = tdefl_output_buffer::new();
+  out_buf.m_pBuf = dst_buf.as_mut_ptr(); out_buf.m_capacity = dst_buf.len();
+  let mut callback = |&mut: pBuf: *const u8, len: uint| {tdefl_output_buffer_putter(pBuf, len, &mut out_buf)};;
+  if !tdefl_compress_mem_to_output(src_buf, &mut callback, flags) {return 0;};
   return out_buf.m_size;
 }
 
