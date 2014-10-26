@@ -393,23 +393,23 @@ macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (
 
 // Main low-level decompressor coroutine function. This is the only function actually needed for decompression. All the other functions are just high-level helpers for improved usability.
 // This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output.
-fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: *const size_t, pOut_buf_start: *const u8, pOut_buf_next: *const u8, pOut_buf_size: *const size_t, decomp_flags: u32) -> tinfl_status
+fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: &mut uint, pOut_buf_start: *const u8, pOut_buf_next: *const u8, pOut_buf_size: &mut uint, decomp_flags: DecompressionFlags) -> tinfl_status
 {
   let s_length_base: [int, ..31] = [ 3,4,5,6,7,8,9,10,11,13, 15,17,19,23,27,31,35,43,51,59, 67,83,99,115,131,163,195,227,258,0,0 ];
   let s_length_extra: [int, ..31]= [ 0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0 ];
   let s_dist_base: [int, ..32] = [ 1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193, 257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577,0,0];
-  let s_dist_extra: [int, ..32] = [ 0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  let s_dist_extra: [int, ..32] = [ 0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13, 0xFFFF, 0xFFFF ]; // WARNING miniz.c HAD WRONG INITIALIZER
   let s_length_dezigzag: [u8, ..19] = [ 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 ];
   let s_min_table_sizes: [int, ..3] = [ 257, 1, 4 ];
 
   let status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: u32; let dist: u32; let counter: u32; let num_extra: u32; let bit_buf: tinfl_bit_buf_t;
-  let pIn_buf_cur: *const u8 = pIn_buf_next; let pIn_buf_end: *const u8 = pIn_buf_next + *pIn_buf_size;
-  let pOut_buf_cur: *const u8 = pOut_buf_next; let pOut_buf_end:  *const u8 = pOut_buf_next + *pOut_buf_size;
-  let out_buf_size_mask: size_t = if (decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as size_t} else {((pOut_buf_next - pOut_buf_start) + *pOut_buf_size) - 1};
+  let pIn_buf_cur: *const u8 = pIn_buf_next; let pIn_buf_end: *const u8 = pIn_buf_next.offset(*pIn_buf_size as int);
+  let pOut_buf_cur: *const u8 = pOut_buf_next; let pOut_buf_end:  *const u8 = pOut_buf_next.offset(*pOut_buf_size as int);
+  let out_buf_size_mask: size_t = if decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as size_t} else {((pOut_buf_next as uint - pOut_buf_start as uint) + *pOut_buf_size) as u64 - 1};
   let dist_from_out_buf_start: size_t;
 
   // Ensure the output buffer's size is a power of 2, unless the output buffer is large enough to hold the entire output file (in which case it doesn't matter).
-  if (((out_buf_size_mask + 1) & out_buf_size_mask) || (pOut_buf_next < pOut_buf_start)) { *pIn_buf_size = *pOut_buf_size = 0; return TINFL_STATUS_BAD_PARAM; }
+  if (((out_buf_size_mask + 1) & out_buf_size_mask != 0) || (pOut_buf_next < pOut_buf_start)) { *pIn_buf_size = 0; *pOut_buf_size = 0; return TINFL_STATUS_BAD_PARAM; }
 
   num_bits = r.m_num_bits; bit_buf = r.m_bit_buf; dist = r.m_dist; counter = r.m_counter; num_extra = r.m_num_extra; dist_from_out_buf_start = r.m_dist_from_out_buf_start;
   // TINFL_CR_BEGIN
@@ -692,8 +692,9 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
 
   let common_exit = || {
     r.m_num_bits = num_bits; r.m_bit_buf = bit_buf; r.m_dist = dist; r.m_counter = counter; r.m_num_extra = num_extra; r.m_dist_from_out_buf_start = dist_from_out_buf_start;
-    *pIn_buf_size = pIn_buf_cur - pIn_buf_next; *pOut_buf_size = pOut_buf_cur - pOut_buf_next;
-    if ((decomp_flags & (TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32)) && (status >= 0))
+    *pIn_buf_size = pIn_buf_cur as uint - pIn_buf_next as uint;
+    *pOut_buf_size = pOut_buf_cur as uint - pOut_buf_next as uint;
+    if decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32) && (status as i8 >= 0)
     {
       let ptr: *const u8 = pOut_buf_next; let buf_len: size_t = *pOut_buf_size;
       let i: u32; let s1: u32 = r.m_check_adler32 & 0xffff; let s2: u32 = r.m_check_adler32 >> 16; let block_len: size_t = buf_len % 5552;
