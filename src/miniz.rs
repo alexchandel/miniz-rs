@@ -64,10 +64,8 @@ use std::cmp::{max, min};
 type mz_ulong = libc::c_ulong;
 
 const MZ_ADLER32_INIT: mz_ulong = (1);
-// mz_adler32() returns the initial adler-32 value to use when called with ptr==NULL.
 
 const MZ_CRC32_INIT: mz_ulong = (0);
-// mz_crc32() returns the initial CRC-32 value to use when called with ptr==NULL.
 
 // Compression strategies.
 enum CompressionStrategies { MZ_DEFAULT_STRATEGY = 0, MZ_FILTERED = 1, MZ_HUFFMAN_ONLY = 2, MZ_RLE = 3, MZ_FIXED = 4 }
@@ -97,7 +95,7 @@ bitflags! {
 
 const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
-type tinfl_put_buf_func_ptr = fn (pBuf: *const c_void, len: int, pUser: *mut c_void) -> c_int;
+type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
 
 type tinfl_decompressor = tinfl_decompressor_tag;
 
@@ -192,7 +190,7 @@ enum OtherCompressionFlags
 }
 
 // Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
-type tdefl_put_buf_func_ptr = fn (pBuf: *const c_void, len: int, pUser: *mut c_void) -> bool;
+type tdefl_put_buf_func_ptr = fn (pBuf: *const c_void, len: uint, pUser: *mut c_void) -> bool;
 
 const TDEFL_MAX_HUFF_TABLES: uint = 3;
 const TDEFL_MAX_HUFF_SYMBOLS_0: uint = 288;
@@ -285,40 +283,36 @@ struct tdefl_compressor
 // ------------------- zlib-style API's
 
 /// Adler-32 checksum algorithm
-fn mz_adler32(adler: mz_ulong, ptr: *const c_uchar, buf_len: size_t) -> mz_ulong
+/// mz_adler32() returns the initial adler-32 value to use when called with ptr==NULL.
+fn mz_adler32(adler: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
 {
-  let i: u32;
-  let s1: u32 = (adler & 0xffff) as u32;
-  let s2: u32 = (adler >> 16) as u32;
-  let block_len: libc::size_t = (buf_len % 5552);
-  if ptr.is_null() {return MZ_ADLER32_INIT;};
-  while buf_len > 0 {
-    i = 0;
-    while (i + 7 < block_len) {
-      // TODO are semicolons correct?
-      s1 += ptr[0]; s2 += s1; s1 += ptr[1]; s2 += s1; s1 += ptr[2]; s2 += s1; s1 += ptr[3]; s2 += s1;
-      s1 += ptr[4]; s2 += s1; s1 += ptr[5]; s2 += s1; s1 += ptr[6]; s2 += s1; s1 += ptr[7]; s2 += s1;
-      i += 8; ptr += 8;
+  let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_ADLER32_INIT };
+  let mut s1: u32 = (adler & 0xffff) as u32;
+  let mut s2: u32 = (adler >> 16) as u32;
+  let mut block_len: uint = (buf.len() % 5552u);
+  while buf.len() > 0 {
+    for i in buf[..block_len].iter() {
+      s1 += (*i as u32); s2 += s1;
     }
-    while (i < block_len) {
-      // TODO is ++ correct?
-      s1 += *ptr; ptr += 1; s2 += s1;
-      i += 1;
-    }
-    s1 %= 65521u32; s2 %= 65521u32; buf_len -= block_len; block_len = 5552;
+    s1 %= 65521u32; s2 %= 65521u32; buf = buf[block_len..]; block_len = 5552u;
   }
-  return (s2 << 16) + s1;
+  return ((s2 << 16) + s1) as mz_ulong;
 }
 
 /// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor cache usage against speed": http://www.geocities.com/malbrain/
-fn mz_crc32(crc: mz_ulong, ptr: *const u8, buf_len: size_t) -> mz_ulong
+/// mz_crc32() returns the initial CRC-32 value to use when called with ptr==NULL.
+fn mz_crc32(crc: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
 {
+  let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_CRC32_INIT };
   let s_crc32: [u32, ..16] = [ 0, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
     0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c ];
   let crcu32: u32 = crc as u32;
-  if ptr.is_null() {return MZ_CRC32_INIT;};
-  crcu32 = !crcu32; while (buf_len > 0) { buf_len -= 1; let b: u8 = *ptr; ptr+=1; crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b & 0xF)]; crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b >> 4)]; }
-  return !crcu32;
+  crcu32 = !crcu32;
+  for b in buf.iter() {
+    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b & 0xF)) as uint];
+    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b >> 4)) as uint];
+  }
+  return !crcu32 as mz_ulong;
 }
 
 // ------------------- Low-level Decompression (completely independent from all compression API's)
