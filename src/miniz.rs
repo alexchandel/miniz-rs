@@ -2016,12 +2016,12 @@ fn tdefl_get_adler32(d: &mut tdefl_compressor) -> u32
 }
 
 // tdefl_compress_mem_to_output() compresses a block to an output stream. The above helpers use this function internally.
-fn tdefl_compress_mem_to_output(pBuf: *const c_void, buf_len: size_t, pPut_buf_func: tdefl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> bool
+fn tdefl_compress_mem_to_output(in_buf: &[u8], pPut_buf_func: tdefl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: int) -> bool
 {
-  let pComp: Box<tdefl_compressor>; let mut succeeded: bool; if (((buf_len) && (!pBuf)) || (!pPut_buf_func)) {return false;};
-  pComp = box tdefl_compressor;
-  succeeded = (tdefl_init(pComp, pPut_buf_func, pPut_buf_user, flags) == TDEFL_STATUS_OKAY);
-  succeeded = succeeded && (tdefl_compress_buffer(pComp, pBuf, buf_len, TDEFL_FINISH) == TDEFL_STATUS_DONE);
+  let comp: tdefl_compressor;
+  let mut succeeded: bool;
+  succeeded = (tdefl_init(&mut comp, pPut_buf_func, pPut_buf_user, flags) == TDEFL_STATUS_OKAY);
+  succeeded = succeeded && (tdefl_compress_buffer(&mut comp, in_buf.as_ptr(), in_buf.len(), TDEFL_FINISH) == TDEFL_STATUS_DONE);
   return succeeded;
 }
 
