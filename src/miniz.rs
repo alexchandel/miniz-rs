@@ -1364,7 +1364,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
   d.m_output_flush_ofs = 0;
   d.m_output_flush_remaining = 0;
 
-  *d.m_pLZ_flags = (mz_uint8)(*d.m_pLZ_flags >> d.m_num_flags_left);
+  *d.m_pLZ_flags = (*d.m_pLZ_flags >> d.m_num_flags_left) as u8;
   d.m_pLZ_code_buf -= (d.m_num_flags_left == 8);
 
   if ((d.m_flags & TDEFL_WRITE_ZLIB_HEADER) && (!d.m_block_index))
@@ -1429,7 +1429,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
 
   d.m_pLZ_code_buf = d.m_lz_code_buf + 1; d.m_pLZ_flags = d.m_lz_code_buf; d.m_num_flags_left = 8; d.m_lz_code_buf_dict_pos += d.m_total_lz_bytes; d.m_total_lz_bytes = 0; d.m_block_index+=1;
 
-  if ((n = (int)(d.m_pOutput_buf - pOutput_buf_start)) != 0)
+  if ((n = (d.m_pOutput_buf - pOutput_buf_start) as c_int) != 0)
   {
     if (d.m_pPut_buf_func)
     {
@@ -1647,10 +1647,10 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
 
           cur_match_dist-=1;
 
-          pLZ_code_buf[0] = (u8)(cur_match_len - TDEFL_MIN_MATCH_LEN);
+          pLZ_code_buf[0] = (cur_match_len - TDEFL_MIN_MATCH_LEN) as u8;
           *((&pLZ_code_buf[1]) as *mut u16) = cur_match_dist as u16;
           pLZ_code_buf += 3;
-          *pLZ_flags = (u8)((*pLZ_flags >> 1) | 0x80);
+          *pLZ_flags = ((*pLZ_flags >> 1) | 0x80) as u8;
 
           s0 = s_tdefl_small_dist_sym[cur_match_dist & 511];
           s1 = s_tdefl_large_dist_sym[cur_match_dist >> 8];
@@ -1782,7 +1782,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
       {
         let c: u8 = *pSrc; pSrc+=1; d.m_dict[dst_pos] = c; if (dst_pos < (TDEFL_MAX_MATCH_LEN - 1)) {d.m_dict[TDEFL_LZ_DICT_SIZE + dst_pos] = c;}
         hash = ((hash << TDEFL_LZ_HASH_SHIFT) ^ c) & (TDEFL_LZ_HASH_SIZE - 1);
-        d.m_next[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] = d.m_hash[hash]; d.m_hash[hash] = (mz_uint16)(ins_pos);
+        d.m_next[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] = d.m_hash[hash]; d.m_hash[hash] = ins_pos as u16;
         dst_pos = (dst_pos + 1) & TDEFL_LZ_DICT_SIZE_MASK; ins_pos += 1;
       }
     }
@@ -1802,7 +1802,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
         {
           let ins_pos: mz_uint = d.m_lookahead_pos + (d.m_lookahead_size - 1) - 2;
           let hash: mz_uint = ((d.m_dict[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] << (TDEFL_LZ_HASH_SHIFT * 2)) ^ (d.m_dict[(ins_pos + 1) & TDEFL_LZ_DICT_SIZE_MASK] << TDEFL_LZ_HASH_SHIFT) ^ c) & (TDEFL_LZ_HASH_SIZE - 1);
-          d.m_next[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] = d.m_hash[hash]; d.m_hash[hash] = (mz_uint16)(ins_pos);
+          d.m_next[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] = d.m_hash[hash]; d.m_hash[hash] = ins_pos as u16;
         }
       }
     }
@@ -1870,7 +1870,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
     d.m_dict_size = min(d.m_dict_size + len_to_move, TDEFL_LZ_DICT_SIZE);
     // Check if it's time to flush the current LZ codes to the internal output buffer.
     if ( (d.m_pLZ_code_buf > &d.m_lz_code_buf[TDEFL_LZ_CODE_BUF_SIZE - 8]) ||
-         ( (d.m_total_lz_bytes > 31*1024) && (((((mz_uint)(d.m_pLZ_code_buf - d.m_lz_code_buf) * 115) >> 7) >= d.m_total_lz_bytes) || (d.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS))) )
+         ( (d.m_total_lz_bytes > 31*1024) && ((((((d.m_pLZ_code_buf - d.m_lz_code_buf) as mz_uint) * 115) >> 7) >= d.m_total_lz_bytes) || (d.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS))) )
     {
       let n: int;
       d.m_pSrc = pSrc; d.m_src_buf_left = src_buf_left;
@@ -1935,16 +1935,16 @@ fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const c_void, pIn_buf_size
   }
 
   #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
-  fn todo_name_me4() -> bool {
+  fn todo_name_me4(&d: tdefl_compressor) -> bool {
     (((d.m_flags & TDEFL_MAX_PROBES_MASK) == 1) &&
      ((d.m_flags & TDEFL_GREEDY_PARSING_FLAG) != 0) &&
      ((d.m_flags & (TDEFL_FILTER_MATCHES | TDEFL_FORCE_ALL_RAW_BLOCKS | TDEFL_RLE_MATCHES)) == 0))
   }
   #[cfg(not(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little")))]
-  fn todo_name_me4() -> bool { false }
+  fn todo_name_me4(&d: tdefl_compressor) -> bool { false }
 
 // #if MINIZ_USE_UNALIGNED_LOADS_AND_STORES && MINIZ_LITTLE_ENDIAN
-  if todo_name_me4()
+  if todo_name_me4(d)
   {
     if (!tdefl_compress_fast(d)){
       return d.m_prev_return_status;
