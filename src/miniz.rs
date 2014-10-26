@@ -696,21 +696,10 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
     *pOut_buf_size = pOut_buf_cur as uint - pOut_buf_next as uint;
     if decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32) && (status as i8 >= 0)
     {
-      let ptr: *const u8 = pOut_buf_next; let buf_len: size_t = *pOut_buf_size;
-      let i: u32; let s1: u32 = r.m_check_adler32 & 0xffff; let s2: u32 = r.m_check_adler32 >> 16; let block_len: size_t = buf_len % 5552;
-      while (buf_len)
-      {
-        i = 0;
-        while i + 7 < block_len
-        {
-          s1 += ptr[0]; s2 += s1; s1 += ptr[1]; s2 += s1; s1 += ptr[2]; s2 += s1; s1 += ptr[3]; s2 += s1;
-          s1 += ptr[4]; s2 += s1; s1 += ptr[5]; s2 += s1; s1 += ptr[6]; s2 += s1; s1 += ptr[7]; s2 += s1;
-          i += 8; ptr += 8;
-        }
-        while i < block_len {s1 += *ptr; ptr += 1; s2 += s1; i+=1;}
-        s1 %= 65521u; s2 %= 65521u; buf_len -= block_len; block_len = 5552;
-      }
-      r.m_check_adler32 = (s2 << 16) + s1; if ((status == TINFL_STATUS_DONE) && (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER) && (r.m_check_adler32 != r.m_z_adler32)) {status = TINFL_STATUS_ADLER32_MISMATCH;};
+      buf_as_slice(pOut_buf_next, *pOut_buf_size, |out_buf_next_slice| {
+        r.m_check_adler32 = mz_adler32(r.m_check_adler32 as mz_ulong, Some(out_buf_next_slice)) as u32;
+      });
+      if ((status == TINFL_STATUS_DONE) && decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER) && (r.m_check_adler32 != r.m_z_adler32)) {status = TINFL_STATUS_ADLER32_MISMATCH;};
     }
   };
   return status;
