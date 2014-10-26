@@ -124,9 +124,10 @@ fn tinfl_get_adler32(r: &tinfl_decompressor) -> u32 {
 // Internal/private bits follow.
 enum InternalPriviteBits
 {
-  TINFL_MAX_HUFF_TABLES = 3, TINFL_MAX_HUFF_SYMBOLS_0 = 288, TINFL_MAX_HUFF_SYMBOLS_1 = 32, TINFL_MAX_HUFF_SYMBOLS_2 = 19,
-  TINFL_FAST_LOOKUP_BITS = 10, TINFL_FAST_LOOKUP_SIZE = 1 << TINFL_FAST_LOOKUP_BITS
+  TINFL_MAX_HUFF_TABLES = 3, TINFL_MAX_HUFF_SYMBOLS_0 = 288, TINFL_MAX_HUFF_SYMBOLS_1 = 32, TINFL_MAX_HUFF_SYMBOLS_2 = 19
 }
+const TINFL_FAST_LOOKUP_BITS: uint = 10;
+const TINFL_FAST_LOOKUP_SIZE: uint = 1 << TINFL_FAST_LOOKUP_BITS;
 
 struct tinfl_huff_table
 {
@@ -189,13 +190,25 @@ enum OtherCompressionFlags
 // Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
 type tdefl_put_buf_func_ptr = fn (pBuf: *const c_void, len: int, pUser: *mut c_void) -> bool;
 
-enum OutputCompressionFlags { TDEFL_MAX_HUFF_TABLES = 3, TDEFL_MAX_HUFF_SYMBOLS_0 = 288, TDEFL_MAX_HUFF_SYMBOLS_1 = 32, TDEFL_MAX_HUFF_SYMBOLS_2 = 19, TDEFL_LZ_DICT_SIZE = 32768, TDEFL_LZ_DICT_SIZE_MASK = TDEFL_LZ_DICT_SIZE - 1, TDEFL_MIN_MATCH_LEN = 3, TDEFL_MAX_MATCH_LEN = 258 }
+enum OutputCompressionFlags { TDEFL_MAX_HUFF_TABLES = 3, TDEFL_MAX_HUFF_SYMBOLS_0 = 288, TDEFL_MAX_HUFF_SYMBOLS_1 = 32, TDEFL_MAX_HUFF_SYMBOLS_2 = 19}
+const TDEFL_MIN_MATCH_LEN: uint = 3;
+const TDEFL_MAX_MATCH_LEN: uint = 258;
+const TDEFL_LZ_DICT_SIZE: uint = 32768;
+const TDEFL_LZ_DICT_SIZE_MASK: uint = (TDEFL_LZ_DICT_SIZE - 1);
 
 // TDEFL_OUT_BUF_SIZE MUST be large enough to hold a single entire compressed output block (using static/fixed Huffman codes).
 #[cfg(TDEFL_LESS_MEMORY)]
-enum TodoNameMeFlags { TDEFL_LZ_CODE_BUF_SIZE = 24 * 1024, TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LZ_HASH_BITS = 12, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+const TDEFL_LZ_HASH_BITS: uint = 12;
+#[cfg(TDEFL_LESS_MEMORY)]
+const TDEFL_LZ_CODE_BUF_SIZE: uint = 24 * 1024;
+#[cfg(TDEFL_LESS_MEMORY)]
+enum TodoNameMeFlags { TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
 #[cfg(not(TDEFL_LESS_MEMORY))]
-enum TodoNameMeFlags { TDEFL_LZ_CODE_BUF_SIZE = 64 * 1024, TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LZ_HASH_BITS = 15, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+const TDEFL_LZ_HASH_BITS: uint = 15;
+#[cfg(not(TDEFL_LESS_MEMORY))]
+const TDEFL_LZ_CODE_BUF_SIZE: uint = 64 * 1024;
+#[cfg(not(TDEFL_LESS_MEMORY))]
+enum TodoNameMeFlags { TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
 
 // The low-level tdefl functions below may be used directly if the above helper functions aren't flexible enough. The low-level functions don't make any heap allocations, unlike the above helper functions.
 enum tdefl_status
