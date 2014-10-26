@@ -957,37 +957,6 @@ fn tdefl_optimize_huffman_table(d: &mut tdefl_compressor, table_num: c_int, tabl
   }
 }
 
-macro_rules! TDEFL_PUT_BITS( (b, l) => (loop {
-  mz_uint bits = b; mz_uint len = l; MZ_ASSERT(bits <= ((1U << len) - 1U));
-  d->m_bit_buffer |= (bits << d->m_bits_in); d->m_bits_in += len;
-  while (d->m_bits_in >= 8) {
-    if (d->m_pOutput_buf < d->m_pOutput_buf_end)
-      *d->m_pOutput_buf++ = (u8)(d->m_bit_buffer);
-      d->m_bit_buffer >>= 8;
-      d->m_bits_in -= 8;
-  }
-  break; };);
-)
-
-macro_rules! TDEFL_RLE_PREV_CODE_SIZE( () => ({ if (rle_repeat_count) {
-  if (rle_repeat_count < 3) {
-    d->m_huff_count[2][prev_code_size] = (mz_uint16)(d->m_huff_count[2][prev_code_size] + rle_repeat_count);
-    while (rle_repeat_count--) packed_code_sizes[num_packed_code_sizes++] = prev_code_size;
-  } else {
-    d->m_huff_count[2][16] = (mz_uint16)(d->m_huff_count[2][16] + 1); packed_code_sizes[num_packed_code_sizes++] = 16; packed_code_sizes[num_packed_code_sizes++] = (u8)(rle_repeat_count - 3);
-} rle_repeat_count = 0; } });
-)
-
-macro_rules! TDEFL_RLE_ZERO_CODE_SIZE( () => ({ if (rle_z_count) {
-  if (rle_z_count < 3) {
-    d->m_huff_count[2][0] = (mz_uint16)(d->m_huff_count[2][0] + rle_z_count); while (rle_z_count--) packed_code_sizes[num_packed_code_sizes++] = 0;
-  } else if (rle_z_count <= 10) {
-    d->m_huff_count[2][17] = (mz_uint16)(d->m_huff_count[2][17] + 1); packed_code_sizes[num_packed_code_sizes++] = 17; packed_code_sizes[num_packed_code_sizes++] = (u8)(rle_z_count - 3);
-  } else {
-    d->m_huff_count[2][18] = (mz_uint16)(d->m_huff_count[2][18] + 1); packed_code_sizes[num_packed_code_sizes++] = 18; packed_code_sizes[num_packed_code_sizes++] = (u8)(rle_z_count - 11);
-} rle_z_count = 0; } });
-)
-
 const s_tdefl_packed_code_size_syms_swizzle: [u8, ..19] = [ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 ];
 
 fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
@@ -1004,6 +973,62 @@ fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
   let code_sizes_to_pack: [u8, ..TDEFL_MAX_HUFF_SYMBOLS_0 + TDEFL_MAX_HUFF_SYMBOLS_1];
   let packed_code_sizes: [u8, ..TDEFL_MAX_HUFF_SYMBOLS_0 + TDEFL_MAX_HUFF_SYMBOLS_1];
   let prev_code_size: u8 = 0xFF;
+
+  macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
+    ({
+      let bits: mz_uint = $b;
+      let len: mz_uint = $l;
+      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
+      while d.m_bits_in >= 8 {
+        if d.m_pOutput_buf < d.m_pOutput_buf_end{
+          *d.m_pOutput_buf = d.m_bit_buffer as u8;
+          d.m_pOutput_buf += 1;
+        }
+        d.m_bit_buffer >>= 8;
+        d.m_bits_in -= 8;
+      }
+    };);
+  )
+
+  macro_rules! TDEFL_RLE_PREV_CODE_SIZE( () =>
+    ({
+      if (rle_repeat_count) {
+        if (rle_repeat_count < 3) {
+          d.m_huff_count[2][prev_code_size] = (d.m_huff_count[2][prev_code_size] + rle_repeat_count) as u16;
+          while {let temp = rle_repeat_count; rle_repeat_count -= 1; temp} {
+            packed_code_sizes[num_packed_code_sizes] = prev_code_size;
+            num_packed_code_sizes += 1;
+          }
+        } else {
+          d.m_huff_count[2][16] = (d.m_huff_count[2][16] + 1) as u16;
+          packed_code_sizes[num_packed_code_sizes] = 16; num_packed_code_sizes += 1;
+          packed_code_sizes[num_packed_code_sizes] = (rle_repeat_count - 3) as u8; num_packed_code_sizes += 1;
+        } rle_repeat_count = 0;
+      }
+    });
+  )
+
+  macro_rules! TDEFL_RLE_ZERO_CODE_SIZE( () =>
+    ({
+      if rle_z_count {
+        if rle_z_count < 3 {
+          d.m_huff_count[2][0] = (d.m_huff_count[2][0] + rle_z_count) as u16;
+          while {let temp = rle_z_count; rle_z_count -= 1; temp} {
+            packed_code_sizes[num_packed_code_sizes] = 0; num_packed_code_sizes += 1;
+          }
+        } else if rle_z_count <= 10 {
+          d.m_huff_count[2][17] = (d.m_huff_count[2][17] + 1) as u16;
+          packed_code_sizes[num_packed_code_sizes] = 17; num_packed_code_sizes += 1;
+          packed_code_sizes[num_packed_code_sizes] = (rle_z_count - 3) as u8; num_packed_code_sizes += 1;
+        } else {
+          d.m_huff_count[2][18] = (d.m_huff_count[2][18] + 1) as u16;
+          packed_code_sizes[num_packed_code_sizes] = 18; num_packed_code_sizes += 1;
+          packed_code_sizes[num_packed_code_sizes] = (rle_z_count - 11) as u8; num_packed_code_sizes += 1;
+        } rle_z_count = 0;
+      }
+    });
+  )
 
   d.m_huff_count[0][256] = 1;
 
@@ -1024,53 +1049,74 @@ fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
     let code_size: u8 = code_sizes_to_pack[i];
     if (!code_size)
     {
-      TDEFL_RLE_PREV_CODE_SIZE();
+      TDEFL_RLE_PREV_CODE_SIZE!();
       rle_z_count+=1;
-      if rle_z_count == 138 { TDEFL_RLE_ZERO_CODE_SIZE(); }
+      if rle_z_count == 138 { TDEFL_RLE_ZERO_CODE_SIZE!(); }
     }
     else
     {
-      TDEFL_RLE_ZERO_CODE_SIZE();
+      TDEFL_RLE_ZERO_CODE_SIZE!();
       if (code_size != prev_code_size)
       {
-        TDEFL_RLE_PREV_CODE_SIZE();
+        TDEFL_RLE_PREV_CODE_SIZE!();
         d.m_huff_count[2][code_size] = (d.m_huff_count[2][code_size] + 1) as u16; packed_code_sizes[num_packed_code_sizes] = code_size; num_packed_code_sizes+=1;
       }
       else {
         rle_repeat_count+=1;
         if (rle_repeat_count == 6)
         {
-          TDEFL_RLE_PREV_CODE_SIZE();
+          TDEFL_RLE_PREV_CODE_SIZE!();
         }
       }
     }
     prev_code_size = code_size;
     i+=1
   }
-  if (rle_repeat_count) { TDEFL_RLE_PREV_CODE_SIZE(); } else { TDEFL_RLE_ZERO_CODE_SIZE(); }
+  if (rle_repeat_count) {
+    TDEFL_RLE_PREV_CODE_SIZE!();
+  } else {
+    TDEFL_RLE_ZERO_CODE_SIZE!();
+  }
 
   tdefl_optimize_huffman_table(d, 2, TDEFL_MAX_HUFF_SYMBOLS_2, 7, false);
 
-  TDEFL_PUT_BITS(2, 2);
+  TDEFL_PUT_BITS!(2, 2);
 
-  TDEFL_PUT_BITS(num_lit_codes - 257, 5);
-  TDEFL_PUT_BITS(num_dist_codes - 1, 5);
+  TDEFL_PUT_BITS!(num_lit_codes - 257, 5);
+  TDEFL_PUT_BITS!(num_dist_codes - 1, 5);
 
   while num_bit_lengths >= 0 { if d.m_huff_code_sizes[2][s_tdefl_packed_code_size_syms_swizzle[num_bit_lengths]] {break;} num_bit_lengths-=1 }
-  num_bit_lengths = MZ_MAX(4, (num_bit_lengths + 1)); TDEFL_PUT_BITS(num_bit_lengths - 4, 4);
+  num_bit_lengths = max(4, (num_bit_lengths + 1)); TDEFL_PUT_BITS!(num_bit_lengths - 4, 4);
   i = 0;
-  while (i as int) < num_bit_lengths { TDEFL_PUT_BITS(d.m_huff_code_sizes[2][s_tdefl_packed_code_size_syms_swizzle[i]], 3); i+=1 }
+  while (i as int) < num_bit_lengths { TDEFL_PUT_BITS!(d.m_huff_code_sizes[2][s_tdefl_packed_code_size_syms_swizzle[i]], 3); i+=1 }
 
   while packed_code_sizes_index < num_packed_code_sizes
   {
     let code: mz_uint = packed_code_sizes[packed_code_sizes_index]; packed_code_sizes_index+=1; MZ_ASSERT(code < TDEFL_MAX_HUFF_SYMBOLS_2);
-    TDEFL_PUT_BITS(d.m_huff_codes[2][code], d.m_huff_code_sizes[2][code]);
-    if code >= 16 {TDEFL_PUT_BITS(packed_code_sizes[packed_code_sizes_index], "\02\03\07"[code - 16]); packed_code_sizes_index+=1;}
+    TDEFL_PUT_BITS!(d.m_huff_codes[2][code], d.m_huff_code_sizes[2][code]);
+    if code >= 16 {TDEFL_PUT_BITS!(packed_code_sizes[packed_code_sizes_index], "\02\03\07"[code - 16]); packed_code_sizes_index+=1;}
   }
 }
 
 fn tdefl_start_static_block(d: &mut tdefl_compressor)
 {
+  macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
+    ({
+      let bits: mz_uint = $b;
+      let len: mz_uint = $l;
+      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
+      while d.m_bits_in >= 8 {
+        if d.m_pOutput_buf < d.m_pOutput_buf_end{
+          *d.m_pOutput_buf = d.m_bit_buffer as u8;
+          d.m_pOutput_buf += 1;
+        }
+        d.m_bit_buffer >>= 8;
+        d.m_bits_in -= 8;
+      }
+    };);
+  )
+
   let mut i: mz_uint = 0;
   let p: *mut u8 = &d.m_huff_code_sizes[0][0];
 
@@ -1084,7 +1130,7 @@ fn tdefl_start_static_block(d: &mut tdefl_compressor)
   tdefl_optimize_huffman_table(d, 0, 288, 15, true);
   tdefl_optimize_huffman_table(d, 1, 32, 15, true);
 
-  TDEFL_PUT_BITS(1, 2);
+  TDEFL_PUT_BITS!(1, 2);
 }
 
 const mz_bitmasks: [mz_uint, ..17] = [ 0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF ];
@@ -1099,7 +1145,29 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
   let bit_buffer: u64 = d.m_bit_buffer;
   let bits_in: mz_uint = d.m_bits_in;
 
-  macro_rules! TDEFL_PUT_BITS_FAST( (b, l) => { bit_buffer |= (((b) as u64) << bits_in); bits_in += (l); }; )
+  macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
+    ({
+      let bits: mz_uint = $b;
+      let len: mz_uint = $l;
+      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
+      while d.m_bits_in >= 8 {
+        if d.m_pOutput_buf < d.m_pOutput_buf_end{
+          *d.m_pOutput_buf = d.m_bit_buffer as u8;
+          d.m_pOutput_buf += 1;
+        }
+        d.m_bit_buffer >>= 8;
+        d.m_bits_in -= 8;
+      }
+    };);
+  )
+
+  macro_rules! TDEFL_PUT_BITS_FAST( ($b:expr, $l:expr) =>
+    ({
+      bit_buffer |= (($b as u64) << bits_in);
+      bits_in += $l;
+    });
+  )
 
   flags = 1;
   while pLZ_codes < pLZ_code_buf_end
@@ -1121,8 +1189,8 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let match_dist: mz_uint = *((pLZ_codes + 1) as *const u16); pLZ_codes += 3;
 
       MZ_ASSERT(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS_FAST(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS_FAST(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
+      TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
+      TDEFL_PUT_BITS_FAST!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
 
       // This sequence coaxes MSVC into using cmov's vs. jmp's.
       s0 = s_tdefl_small_dist_sym[match_dist & 511];
@@ -1133,15 +1201,15 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       num_extra_bits = if match_dist < 512 {n0} else {n1};
 
       MZ_ASSERT(d.m_huff_code_sizes[1][sym]);
-      TDEFL_PUT_BITS_FAST(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
-      TDEFL_PUT_BITS_FAST(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
+      TDEFL_PUT_BITS_FAST!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
+      TDEFL_PUT_BITS_FAST!(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
     }
     else
     {
       let lit: mz_uint = *pLZ_codes;
       pLZ_codes+=1;
       MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
-      TDEFL_PUT_BITS_FAST(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
+      TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
 
       if (((flags & 2) == 0) && (pLZ_codes < pLZ_code_buf_end))
       {
@@ -1149,7 +1217,7 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
         lit = *pLZ_codes;
         pLZ_codes+=1;
         MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
-        TDEFL_PUT_BITS_FAST(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
+        TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
 
         if (((flags & 2) == 0) && (pLZ_codes < pLZ_code_buf_end))
         {
@@ -1157,13 +1225,13 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
           lit = *pLZ_codes;
           pLZ_codes+=1;
           MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
-          TDEFL_PUT_BITS_FAST(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
+          TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
         }
       }
     }
 
     if (pOutput_buf >= d.m_pOutput_buf_end){
-      return MZ_FALSE;
+      return false;
     }
 
     *(pOutput_buf as *mut u64) = bit_buffer;
@@ -1180,13 +1248,13 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
 
   while (bits_in)
   {
-    let n: u32 = MZ_MIN(bits_in, 16);
-    TDEFL_PUT_BITS((bit_buffer as mz_uint) & mz_bitmasks[n], n);
+    let n: u32 = min(bits_in, 16);
+    TDEFL_PUT_BITS!((bit_buffer as mz_uint) & mz_bitmasks[n], n);
     bit_buffer >>= n;
     bits_in -= n;
   }
 
-  TDEFL_PUT_BITS(d.m_huff_codes[0][256], d.m_huff_code_sizes[0][256]);
+  TDEFL_PUT_BITS!(d.m_huff_codes[0][256], d.m_huff_code_sizes[0][256]);
 
   return (d.m_pOutput_buf < d.m_pOutput_buf_end);
 }
@@ -1195,6 +1263,23 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
 {
   let flags: mz_uint = 1;
   let pLZ_codes: *const u8 = d.m_lz_code_buf;
+
+  macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
+    ({
+      let bits: mz_uint = $b;
+      let len: mz_uint = $l;
+      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
+      while d.m_bits_in >= 8 {
+        if d.m_pOutput_buf < d.m_pOutput_buf_end{
+          *d.m_pOutput_buf = d.m_bit_buffer as u8;
+          d.m_pOutput_buf += 1;
+        }
+        d.m_bit_buffer >>= 8;
+        d.m_bits_in -= 8;
+      }
+    };);
+  )
 
   while pLZ_codes < d.m_pLZ_code_buf
   {
@@ -1208,8 +1293,8 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let match_len: mz_uint = pLZ_codes[0]; let match_dist: mz_uint = (pLZ_codes[1] | (pLZ_codes[2] << 8)); pLZ_codes += 3;
 
       MZ_ASSERT(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
+      TDEFL_PUT_BITS!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
+      TDEFL_PUT_BITS!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
 
       if (match_dist < 512)
       {
@@ -1220,19 +1305,19 @@ fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
         sym = s_tdefl_large_dist_sym[match_dist >> 8]; num_extra_bits = s_tdefl_large_dist_extra[match_dist >> 8];
       }
       MZ_ASSERT(d.m_huff_code_sizes[1][sym]);
-      TDEFL_PUT_BITS(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
-      TDEFL_PUT_BITS(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
+      TDEFL_PUT_BITS!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
+      TDEFL_PUT_BITS!(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
     }
     else
     {
       let lit: mz_uint = *pLZ_codes; pLZ_codes+=1;
       MZ_ASSERT(d.m_huff_code_sizes[0][lit]);
-      TDEFL_PUT_BITS(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
+      TDEFL_PUT_BITS!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
     }
     flags >>= 1;
   }
 
-  TDEFL_PUT_BITS(d.m_huff_codes[0][256], d.m_huff_code_sizes[0][256]);
+  TDEFL_PUT_BITS!(d.m_huff_codes[0][256], d.m_huff_code_sizes[0][256]);
 
   return (d.m_pOutput_buf < d.m_pOutput_buf_end);
 }
@@ -1255,6 +1340,23 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
   let n: int; let use_raw_block: int = ((d.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS) != 0) && (d.m_lookahead_pos - d.m_lz_code_buf_dict_pos) <= d.m_dict_size;
   let pOutput_buf_start: *const u8 = if ((d.m_pPut_buf_func.is_null()) && ((*d.m_pOut_buf_size - d.m_out_buf_ofs) >= TDEFL_OUT_BUF_SIZE)) {(d.m_pOut_buf as *const u8) + d.m_out_buf_ofs} else {d.m_output_buf};
 
+  macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
+    ({
+      let bits: mz_uint = $b;
+      let len: mz_uint = $l;
+      MZ_ASSERT(bits <= ((1u << len) - 1u));
+      d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
+      while d.m_bits_in >= 8 {
+        if d.m_pOutput_buf < d.m_pOutput_buf_end{
+          *d.m_pOutput_buf = d.m_bit_buffer as u8;
+          d.m_pOutput_buf += 1;
+        }
+        d.m_bit_buffer >>= 8;
+        d.m_bits_in -= 8;
+      }
+    };);
+  )
+
   d.m_pOutput_buf = pOutput_buf_start;
   d.m_pOutput_buf_end = d.m_pOutput_buf + TDEFL_OUT_BUF_SIZE - 16;
 
@@ -1267,10 +1369,10 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
 
   if ((d.m_flags & TDEFL_WRITE_ZLIB_HEADER) && (!d.m_block_index))
   {
-    TDEFL_PUT_BITS(0x78, 8); TDEFL_PUT_BITS(0x01, 8);
+    TDEFL_PUT_BITS!(0x78, 8); TDEFL_PUT_BITS!(0x01, 8);
   }
 
-  TDEFL_PUT_BITS(flush == TDEFL_FINISH, 1);
+  TDEFL_PUT_BITS!(flush == TDEFL_FINISH, 1);
 
   pSaved_output_buf = d.m_pOutput_buf; saved_bit_buf = d.m_bit_buffer; saved_bits_in = d.m_bits_in;
 
@@ -1283,18 +1385,18 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
        ((d.m_lookahead_pos - d.m_lz_code_buf_dict_pos) <= d.m_dict_size) )
   {
     let i: mz_uint; d.m_pOutput_buf = pSaved_output_buf; d.m_bit_buffer = saved_bit_buf; d.m_bits_in = saved_bits_in;
-    TDEFL_PUT_BITS(0, 2);
-    if (d.m_bits_in) { TDEFL_PUT_BITS(0, 8 - d.m_bits_in); }
+    TDEFL_PUT_BITS!(0, 2);
+    if (d.m_bits_in) { TDEFL_PUT_BITS!(0, 8 - d.m_bits_in); }
     i = 2;
     while i > 0
     {
-      TDEFL_PUT_BITS(d.m_total_lz_bytes & 0xFFFF, 16);
+      TDEFL_PUT_BITS!(d.m_total_lz_bytes & 0xFFFF, 16);
       i -= 1; d.m_total_lz_bytes ^= 0xFFFF;
     }
     i = 0;
     while i < d.m_total_lz_bytes
     {
-      TDEFL_PUT_BITS(d.m_dict[(d.m_lz_code_buf_dict_pos + i) & TDEFL_LZ_DICT_SIZE_MASK], 8);
+      TDEFL_PUT_BITS!(d.m_dict[(d.m_lz_code_buf_dict_pos + i) & TDEFL_LZ_DICT_SIZE_MASK], 8);
       i += 1;
     }
   }
@@ -1302,21 +1404,21 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
   else if (!comp_block_succeeded)
   {
     d.m_pOutput_buf = pSaved_output_buf; d.m_bit_buffer = saved_bit_buf; d.m_bits_in = saved_bits_in;
-    tdefl_compress_block(d, MZ_TRUE);
+    tdefl_compress_block(d, true);
   }
 
   if (flush)
   {
     if (flush == TDEFL_FINISH)
     {
-      if (d.m_bits_in) { TDEFL_PUT_BITS(0, 8 - d.m_bits_in); }
+      if (d.m_bits_in) { TDEFL_PUT_BITS!(0, 8 - d.m_bits_in); }
       if (d.m_flags & TDEFL_WRITE_ZLIB_HEADER) {
-        let i: mz_uint; let a: mz_uint = d.m_adler32; i = 0; while i < 4 { TDEFL_PUT_BITS((a >> 24) & 0xFF, 8); a <<= 8; i+=1; }
+        let i: mz_uint; let a: mz_uint = d.m_adler32; i = 0; while i < 4 { TDEFL_PUT_BITS!((a >> 24) & 0xFF, 8); a <<= 8; i+=1; }
       }
     }
     else
     {
-      let i: mz_uint; let z: mz_uint = 0; TDEFL_PUT_BITS(0, 3); if (d.m_bits_in) { TDEFL_PUT_BITS(0, 8 - d.m_bits_in); } i = 2; while i > 0 { TDEFL_PUT_BITS(z & 0xFFFF, 16); i -= 1; z ^= 0xFFFF; }
+      let i: mz_uint; let z: mz_uint = 0; TDEFL_PUT_BITS!(0, 3); if (d.m_bits_in) { TDEFL_PUT_BITS!(0, 8 - d.m_bits_in); } i = 2; while i > 0 { TDEFL_PUT_BITS!(z & 0xFFFF, 16); i -= 1; z ^= 0xFFFF; }
     }
   }
 
@@ -1338,8 +1440,8 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
     }
     else if (pOutput_buf_start == d.m_output_buf)
     {
-      let bytes_to_copy: int = MZ_MIN(n as size_t, (*d.m_pOut_buf_size - d.m_out_buf_ofs) as size_t) as int;
       memcpy((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf, bytes_to_copy);
+      let bytes_to_copy: int = min(n as size_t, (*d.m_pOut_buf_size - d.m_out_buf_ofs) as size_t) as c_int;
       d.m_out_buf_ofs += bytes_to_copy;
       if ((n -= bytes_to_copy) != 0)
       {
@@ -1357,7 +1459,7 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
 }
 
 // #if MINIZ_USE_UNALIGNED_LOADS_AND_STORES
-macro_rules! TDEFL_READ_UNALIGNED_WORD((p) => (*(const mz_uint16*)(p)); )
+macro_rules! TDEFL_READ_UNALIGNED_WORD(($p:expr) => (*($p as *const u16)); )
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[inline(always)]
 fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: mz_uint, max_dist: mz_uint, max_match_len: mz_uint, pMatch_dist: *mut mz_uint, pMatch_len: *mut mz_uint)
@@ -1372,27 +1474,27 @@ fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: mz_uint, max_dist: 
   let s: *const u16 = (d.m_dict + pos) as *const u16;
   let p: *const u16;
   let q: *const u16;
-  let c01: u16 = TDEFL_READ_UNALIGNED_WORD(&d.m_dict[pos + match_len - 1]);
-  let s01: u16 = TDEFL_READ_UNALIGNED_WORD(s);
+  let c01: u16 = TDEFL_READ_UNALIGNED_WORD!(&d.m_dict[pos + match_len - 1]);
+  let s01: u16 = TDEFL_READ_UNALIGNED_WORD!(s);
   MZ_ASSERT(max_match_len <= TDEFL_MAX_MATCH_LEN); if max_match_len <= match_len {return;}
   loop {
     loop {
       num_probes_left -= 1;
       if num_probes_left == 0 {return;}
-      macro_rules! TDEFL_PROBE( () => (
+      macro_rules! TDEFL_PROBE( () => ({
         next_probe_pos = d.m_next[probe_pos];
-        if ((!next_probe_pos) || ((dist = (mz_uint16)(lookahead_pos - next_probe_pos)) > max_dist)) return;
+        if (!next_probe_pos) || ((dist = (lookahead_pos - next_probe_pos) as u16) > max_dist) {return;}
         probe_pos = next_probe_pos & TDEFL_LZ_DICT_SIZE_MASK;
-        if (TDEFL_READ_UNALIGNED_WORD(&d.m_dict[probe_pos + match_len - 1]) == c01) break;
-      );)
-      TDEFL_PROBE; TDEFL_PROBE; TDEFL_PROBE;
+        if TDEFL_READ_UNALIGNED_WORD!(&d.m_dict[probe_pos + match_len - 1]) == c01 {break;}
+      });)
+      TDEFL_PROBE!(); TDEFL_PROBE!(); TDEFL_PROBE!();
     }
-    if !dist {break;}; q = (d.m_dict + probe_pos) as *const u16; if TDEFL_READ_UNALIGNED_WORD(q) != s01 {continue;}; p = s; probe_len = 32;
+    if !dist {break;}; q = (d.m_dict + probe_pos) as *const u16; if TDEFL_READ_UNALIGNED_WORD!(q) != s01 {continue;}; p = s; probe_len = 32;
     loop {
-      if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-        if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-          if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-            if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
+      if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+        if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+          if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+            if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
               if {probe_len -= 1; probe_len > 0} {
                 continue;
               }
@@ -1404,12 +1506,12 @@ fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: mz_uint, max_dist: 
     }
     if !probe_len
     {
-      *pMatch_dist = dist; *pMatch_len = MZ_MIN(max_match_len, TDEFL_MAX_MATCH_LEN); break;
+      *pMatch_dist = dist; *pMatch_len = min(max_match_len, TDEFL_MAX_MATCH_LEN); break;
     }
     else if (probe_len = (((p - s) as mz_uint) * 2) + (*(p as *const u8) == *(q as *const u8)) as mz_uint) > match_len
     {
-      *pMatch_dist = dist; if (*pMatch_len = match_len = MZ_MIN(max_match_len, probe_len)) == max_match_len {break;}
-      c01 = TDEFL_READ_UNALIGNED_WORD(&d.m_dict[pos + match_len - 1]);
+      *pMatch_dist = dist; if (*pMatch_len = match_len = min(max_match_len, probe_len)) == max_match_len {break;}
+      c01 = TDEFL_READ_UNALIGNED_WORD!(&d.m_dict[pos + match_len - 1]);
     }
   }
 }
@@ -1476,14 +1578,14 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
   {
     let TDEFL_COMP_FAST_LOOKAHEAD_SIZE: mz_uint = 4096;
     let dst_pos: mz_uint = (lookahead_pos + lookahead_size) & TDEFL_LZ_DICT_SIZE_MASK;
-    let num_bytes_to_process: mz_uint = MZ_MIN(d.m_src_buf_left, TDEFL_COMP_FAST_LOOKAHEAD_SIZE - lookahead_size) as mz_uint;
+    let num_bytes_to_process: mz_uint = min(d.m_src_buf_left, TDEFL_COMP_FAST_LOOKAHEAD_SIZE - lookahead_size) as mz_uint;
     d.m_src_buf_left -= num_bytes_to_process;
     lookahead_size += num_bytes_to_process;
 
     while (num_bytes_to_process)
     {
-      let n: u32 = MZ_MIN(TDEFL_LZ_DICT_SIZE - dst_pos, num_bytes_to_process);
       memcpy(d.m_dict + dst_pos, d.m_pSrc, n);
+      let n: u32 = min(TDEFL_LZ_DICT_SIZE - dst_pos, num_bytes_to_process);
       if (dst_pos < (TDEFL_MAX_MATCH_LEN - 1)){
         memcpy(d.m_dict + TDEFL_LZ_DICT_SIZE + dst_pos, d.m_pSrc, MZ_MIN(n, (TDEFL_MAX_MATCH_LEN - 1) - dst_pos));
       }
@@ -1492,7 +1594,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
       num_bytes_to_process -= n;
     }
 
-    dict_size = MZ_MIN(TDEFL_LZ_DICT_SIZE - lookahead_size, dict_size);
+    dict_size = min(TDEFL_LZ_DICT_SIZE - lookahead_size, dict_size);
     if (!d.m_flush) && (lookahead_size < TDEFL_COMP_FAST_LOOKAHEAD_SIZE) {break;}
 
     while (lookahead_size >= 4)
@@ -1508,13 +1610,13 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
       if (((cur_match_dist = (lookahead_pos - probe_pos) as u16) <= dict_size) && ((*((d.m_dict + (probe_pos &= TDEFL_LZ_DICT_SIZE_MASK)) as *const u32) & 0xFFFFFF) == first_trigram))
       {
         let p: *const u16 = pCur_dict as *const u16;
-        let p: *const u16 = (d.m_dict + probe_pos) as *const u16;
+        let q: *const u16 = (d.m_dict + probe_pos) as *const u16;
         let probe_len: u32 = 32;
         loop {
-          if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-            if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-              if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
-                if {p += 1; q += 1; TDEFL_READ_UNALIGNED_WORD(p) == TDEFL_READ_UNALIGNED_WORD(q)} {
+          if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+            if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+              if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
+                if {p += 1; q += 1; (TDEFL_READ_UNALIGNED_WORD!(p)) == (TDEFL_READ_UNALIGNED_WORD!(q))} {
                   if {probe_len -= 1; probe_len > 0} {
                     continue;
                   }
@@ -1539,7 +1641,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
         else
         {
           let s0: u32; let s1: u32;
-          cur_match_len = MZ_MIN(cur_match_len, lookahead_size);
+          cur_match_len = min(cur_match_len, lookahead_size);
 
           MZ_ASSERT((cur_match_len >= TDEFL_MIN_MATCH_LEN) && (cur_match_dist >= 1) && (cur_match_dist <= TDEFL_LZ_DICT_SIZE));
 
@@ -1569,7 +1671,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
 
       total_lz_bytes += cur_match_len;
       lookahead_pos += cur_match_len;
-      dict_size = MZ_MIN(dict_size + cur_match_len, TDEFL_LZ_DICT_SIZE);
+      dict_size = min(dict_size + cur_match_len, TDEFL_LZ_DICT_SIZE);
       cur_pos = (cur_pos + cur_match_len) & TDEFL_LZ_DICT_SIZE_MASK;
       MZ_ASSERT(lookahead_size >= cur_match_len);
       lookahead_size -= cur_match_len;
@@ -1599,7 +1701,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
       d.m_huff_count[0][lit]+=1;
 
       lookahead_pos+=1;
-      dict_size = MZ_MIN(dict_size + 1, TDEFL_LZ_DICT_SIZE);
+      dict_size = min(dict_size + 1, TDEFL_LZ_DICT_SIZE);
       cur_pos = (cur_pos + 1) & TDEFL_LZ_DICT_SIZE_MASK;
       lookahead_size-=1;
 
@@ -1618,7 +1720,7 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
 
   d.m_lookahead_pos = lookahead_pos; d.m_lookahead_size = lookahead_size; d.m_dict_size = dict_size;
   d.m_total_lz_bytes = total_lz_bytes; d.m_pLZ_code_buf = pLZ_code_buf; d.m_pLZ_flags = pLZ_flags; d.m_num_flags_left = num_flags_left;
-  return MZ_TRUE;
+  return true;
 }
 // #endif // MINIZ_USE_UNALIGNED_LOADS_AND_STORES && MINIZ_LITTLE_ENDIAN
 
@@ -1672,7 +1774,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
       let dst_pos: mz_uint = (d.m_lookahead_pos + d.m_lookahead_size) & TDEFL_LZ_DICT_SIZE_MASK;
       let ins_pos: mz_uint = d.m_lookahead_pos + d.m_lookahead_size - 2;
       let hash: mz_uint = (d.m_dict[ins_pos & TDEFL_LZ_DICT_SIZE_MASK] << TDEFL_LZ_HASH_SHIFT) ^ d.m_dict[(ins_pos + 1) & TDEFL_LZ_DICT_SIZE_MASK];
-      let num_bytes_to_process: mz_uint = MZ_MIN(src_buf_left, TDEFL_MAX_MATCH_LEN - d.m_lookahead_size) as mz_uint;
+      let num_bytes_to_process: mz_uint = min(src_buf_left, TDEFL_MAX_MATCH_LEN - d.m_lookahead_size) as mz_uint;
       let pSrc_end: *const u8 = pSrc + num_bytes_to_process;
       src_buf_left -= num_bytes_to_process;
       d.m_lookahead_size += num_bytes_to_process;
@@ -1704,7 +1806,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
         }
       }
     }
-    d.m_dict_size = MZ_MIN(TDEFL_LZ_DICT_SIZE - d.m_lookahead_size, d.m_dict_size);
+    d.m_dict_size = min(TDEFL_LZ_DICT_SIZE - d.m_lookahead_size, d.m_dict_size);
     if ((!flush) && (d.m_lookahead_size < TDEFL_MAX_MATCH_LEN)){
       break;
     }
@@ -1750,7 +1852,7 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
       }
     }
     else if (!cur_match_dist){
-      tdefl_record_literal(d, d.m_dict[MZ_MIN(cur_pos, size_of(d.m_dict) - 1)]);
+      tdefl_record_literal(d, d.m_dict[min(cur_pos, size_of(d.m_dict) - 1)]);
     }
     else if ((d.m_greedy_parsing) || (d.m_flags & TDEFL_RLE_MATCHES) || (cur_match_len >= 128))
     {
@@ -1759,13 +1861,13 @@ fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
     }
     else
     {
-      d.m_saved_lit = d.m_dict[MZ_MIN(cur_pos, size_of(d.m_dict) - 1)]; d.m_saved_match_dist = cur_match_dist; d.m_saved_match_len = cur_match_len;
+      d.m_saved_lit = d.m_dict[min(cur_pos, size_of(d.m_dict) - 1)]; d.m_saved_match_dist = cur_match_dist; d.m_saved_match_len = cur_match_len;
     }
     // Move the lookahead forward by len_to_move bytes.
     d.m_lookahead_pos += len_to_move;
     MZ_ASSERT(d.m_lookahead_size >= len_to_move);
     d.m_lookahead_size -= len_to_move;
-    d.m_dict_size = MZ_MIN(d.m_dict_size + len_to_move, TDEFL_LZ_DICT_SIZE);
+    d.m_dict_size = min(d.m_dict_size + len_to_move, TDEFL_LZ_DICT_SIZE);
     // Check if it's time to flush the current LZ codes to the internal output buffer.
     if ( (d.m_pLZ_code_buf > &d.m_lz_code_buf[TDEFL_LZ_CODE_BUF_SIZE - 8]) ||
          ( (d.m_total_lz_bytes > 31*1024) && (((((mz_uint)(d.m_pLZ_code_buf - d.m_lz_code_buf) * 115) >> 7) >= d.m_total_lz_bytes) || (d.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS))) )
@@ -1791,8 +1893,8 @@ fn tdefl_flush_output_buffer(d: &mut tdefl_compressor) -> tdefl_status
 
   if (d.m_pOut_buf_size)
   {
-    let n: size_t = MZ_MIN(*d.m_pOut_buf_size - d.m_out_buf_ofs, d.m_output_flush_remaining);
     memcpy((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf + d.m_output_flush_ofs, n);
+    let n: size_t = min(*d.m_pOut_buf_size - d.m_out_buf_ofs, d.m_output_flush_remaining);
     d.m_output_flush_ofs += n as mz_uint;
     d.m_output_flush_remaining -= n as mz_uint;
     d.m_out_buf_ofs += n;
