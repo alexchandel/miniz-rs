@@ -1037,11 +1037,11 @@ fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
   while num_lit_codes > 257 { if (d.m_huff_code_sizes[0][num_lit_codes - 1]) {break;}; num_lit_codes-=1; }
   while num_dist_codes > 1 { if (d.m_huff_code_sizes[1][num_dist_codes - 1]) {break;}; num_dist_codes-=1; }
 
-  memcpy(code_sizes_to_pack, &d.m_huff_code_sizes[0][0], num_lit_codes);
-  memcpy(code_sizes_to_pack + num_lit_codes, &d.m_huff_code_sizes[1][0], num_dist_codes);
+  copy_memory(code_sizes_to_pack, &d.m_huff_code_sizes[0][0], num_lit_codes);
+  copy_memory(code_sizes_to_pack + num_lit_codes, &d.m_huff_code_sizes[1][0], num_dist_codes);
   total_code_sizes_to_pack = num_lit_codes + num_dist_codes;
 
-  memset(&d.m_huff_count[2][0], 0, size_of(d.m_huff_count[2][0]) * TDEFL_MAX_HUFF_SYMBOLS_2);
+  set_memory(&d.m_huff_count[2][0], 0, size_of::<u16>() * TDEFL_MAX_HUFF_SYMBOLS_2);
   i = 0;
   while i < total_code_sizes_to_pack
   {
@@ -1124,7 +1124,7 @@ fn tdefl_start_static_block(d: &mut tdefl_compressor)
   while i <= 279 { *p = 7; p+=1; i+=1 }
   while i <= 287 { *p = 8; p+=1; i+=1 }
 
-  memset(d.m_huff_code_sizes[1], 5, 32);
+  set_memory(d.m_huff_code_sizes[1], 5, 32);
 
   tdefl_optimize_huffman_table(d, 0, 288, 15, true);
   tdefl_optimize_huffman_table(d, 1, 32, 15, true);
@@ -1423,8 +1423,8 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
 
   MZ_ASSERT(d.m_pOutput_buf < d.m_pOutput_buf_end);
 
-  memset(&d.m_huff_count[0][0], 0, size_of(d.m_huff_count[0][0]) * TDEFL_MAX_HUFF_SYMBOLS_0);
-  memset(&d.m_huff_count[1][0], 0, size_of(d.m_huff_count[1][0]) * TDEFL_MAX_HUFF_SYMBOLS_1);
+  set_memory(&d.m_huff_count[0][0], 0, size_of(d.m_huff_count[0][0]) * TDEFL_MAX_HUFF_SYMBOLS_0);
+  set_memory(&d.m_huff_count[1][0], 0, size_of(d.m_huff_count[1][0]) * TDEFL_MAX_HUFF_SYMBOLS_1);
 
   d.m_pLZ_code_buf = d.m_lz_code_buf + 1; d.m_pLZ_flags = d.m_lz_code_buf; d.m_num_flags_left = 8; d.m_lz_code_buf_dict_pos += d.m_total_lz_bytes; d.m_total_lz_bytes = 0; d.m_block_index+=1;
 
@@ -1439,8 +1439,8 @@ fn tdefl_flush_block(d: &mut tdefl_compressor, flush: int) -> int
     }
     else if (pOutput_buf_start == d.m_output_buf)
     {
-      memcpy((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf, bytes_to_copy);
       let bytes_to_copy: int = min(n as size_t, (*d.m_pOut_buf_size - d.m_out_buf_ofs) as size_t) as c_int;
+      copy_memory((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf, bytes_to_copy);
       d.m_out_buf_ofs += bytes_to_copy;
       if ((n -= bytes_to_copy) != 0)
       {
@@ -1583,10 +1583,10 @@ fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
 
     while (num_bytes_to_process)
     {
-      memcpy(d.m_dict + dst_pos, d.m_pSrc, n);
       let n: u32 = min(TDEFL_LZ_DICT_SIZE - dst_pos, num_bytes_to_process);
+      copy_memory(d.m_dict + dst_pos, d.m_pSrc, n);
       if (dst_pos < (TDEFL_MAX_MATCH_LEN - 1)){
-        memcpy(d.m_dict + TDEFL_LZ_DICT_SIZE + dst_pos, d.m_pSrc, MZ_MIN(n, (TDEFL_MAX_MATCH_LEN - 1) - dst_pos));
+        copy_memory(d.m_dict + TDEFL_LZ_DICT_SIZE + dst_pos, d.m_pSrc, min(n, (TDEFL_MAX_MATCH_LEN - 1) - dst_pos));
       }
       d.m_pSrc += n;
       dst_pos = (dst_pos + n) & TDEFL_LZ_DICT_SIZE_MASK;
@@ -1892,8 +1892,8 @@ fn tdefl_flush_output_buffer(d: &mut tdefl_compressor) -> tdefl_status
 
   if (d.m_pOut_buf_size)
   {
-    memcpy((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf + d.m_output_flush_ofs, n);
     let n: size_t = min(*d.m_pOut_buf_size - d.m_out_buf_ofs, d.m_output_flush_remaining);
+    copy_memory((d.m_pOut_buf as *mut u8) + d.m_out_buf_ofs, d.m_output_buf + d.m_output_flush_ofs, n);
     d.m_output_flush_ofs += n as mz_uint;
     d.m_output_flush_remaining -= n as mz_uint;
     d.m_out_buf_ofs += n;
@@ -1999,8 +1999,8 @@ fn tdefl_init(d: &mut tdefl_compressor, pPut_buf_func: tdefl_put_buf_func_ptr, p
   d.m_pIn_buf = null(); d.m_pOut_buf = null();
   d.m_pIn_buf_size = null(); d.m_pOut_buf_size = null();
   d.m_flush = TDEFL_NO_FLUSH; d.m_pSrc = null(); d.m_src_buf_left = 0; d.m_out_buf_ofs = 0;
-  memset(&d.m_huff_count[0][0], 0, size_of(d.m_huff_count[0][0]) * TDEFL_MAX_HUFF_SYMBOLS_0);
-  memset(&d.m_huff_count[1][0], 0, size_of(d.m_huff_count[1][0]) * TDEFL_MAX_HUFF_SYMBOLS_1);
+  set_memory(&d.m_huff_count[0][0], 0, size_of(d.m_huff_count[0][0]) * TDEFL_MAX_HUFF_SYMBOLS_0);
+  set_memory(&d.m_huff_count[1][0], 0, size_of(d.m_huff_count[1][0]) * TDEFL_MAX_HUFF_SYMBOLS_1);
   return TDEFL_STATUS_OKAY;
 }
 
@@ -2050,7 +2050,7 @@ fn tdefl_output_buffer_putter(pBuf: *const c_void, len: int, pUser: &mut tdefl_o
     pNew_buf = MZ_REALLOC(p.m_pBuf, new_capacity) as *mut u8; if !pNew_buf {return false;}
     p.m_pBuf = pNew_buf; p.m_capacity = new_capacity;
   }
-  memcpy((p.m_pBuf as *mut u8) + p.m_size, pBuf, len); p.m_size = new_size;
+  copy_memory((p.m_pBuf as *mut u8) + p.m_size, pBuf, len); p.m_size = new_size;
   return true;
 }
 
