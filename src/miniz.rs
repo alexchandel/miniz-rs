@@ -934,7 +934,8 @@ fn tdefl_optimize_huffman_table(d: &mut tdefl_compressor, table_num: c_int, tabl
 
     tdefl_huffman_enforce_max_code_size(num_codes, num_used_syms, code_size_limit);
 
-    MZ_CLEAR_OBJ(d.m_huff_code_sizes[table_num]); MZ_CLEAR_OBJ(d.m_huff_codes[table_num]);
+    d.m_huff_code_sizes[table_num].set_memory(0u8);
+    d.m_huff_codes[table_num].set_memory(0u8);
     i = 1; j = num_used_syms;
     while i <= code_size_limit {
       l = num_codes[i];
