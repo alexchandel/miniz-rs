@@ -86,11 +86,13 @@ type mz_uint = libc::c_uint;
 // TINFL_FLAG_HAS_MORE_INPUT: If set, there are more input bytes available beyond the end of the supplied input buffer. If clear, the input buffer contains all remaining input.
 // TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF: If set, the output buffer is large enough to hold the entire decompressed stream. If clear, the output buffer is at least the size of the dictionary (typically 32KB).
 // TINFL_FLAG_COMPUTE_ADLER32: Force adler-32 checksum computation of the decompressed bytes.
-enum DecompressionFlags {
-  TINFL_FLAG_PARSE_ZLIB_HEADER = 1,
-  TINFL_FLAG_HAS_MORE_INPUT = 2,
-  TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF = 4,
-  TINFL_FLAG_COMPUTE_ADLER32 = 8
+bitflags! {
+  flags DecompressionFlags: u32 {
+    const TINFL_FLAG_PARSE_ZLIB_HEADER = 1,
+    const TINFL_FLAG_HAS_MORE_INPUT = 2,
+    const TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF = 4,
+    const TINFL_FLAG_COMPUTE_ADLER32 = 8
+  }
 }
 
 const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
@@ -103,6 +105,8 @@ type tinfl_decompressor = tinfl_decompressor_tag;
 const TINFL_LZ_DICT_SIZE: uint = 32768;
 
 // Return status.
+#[repr(i8)]
+#[deriving(PartialEq)]
 enum tinfl_status
 {
   TINFL_STATUS_BAD_PARAM = -3,
@@ -190,7 +194,10 @@ enum OtherCompressionFlags
 // Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
 type tdefl_put_buf_func_ptr = fn (pBuf: *const c_void, len: int, pUser: *mut c_void) -> bool;
 
-enum OutputCompressionFlags { TDEFL_MAX_HUFF_TABLES = 3, TDEFL_MAX_HUFF_SYMBOLS_0 = 288, TDEFL_MAX_HUFF_SYMBOLS_1 = 32, TDEFL_MAX_HUFF_SYMBOLS_2 = 19}
+const TDEFL_MAX_HUFF_TABLES: uint = 3;
+const TDEFL_MAX_HUFF_SYMBOLS_0: uint = 288;
+const TDEFL_MAX_HUFF_SYMBOLS_1: uint = 32;
+const TDEFL_MAX_HUFF_SYMBOLS_2: uint = 19;
 const TDEFL_MIN_MATCH_LEN: uint = 3;
 const TDEFL_MAX_MATCH_LEN: uint = 258;
 const TDEFL_LZ_DICT_SIZE: uint = 32768;
@@ -198,17 +205,23 @@ const TDEFL_LZ_DICT_SIZE_MASK: uint = (TDEFL_LZ_DICT_SIZE - 1);
 
 // TDEFL_OUT_BUF_SIZE MUST be large enough to hold a single entire compressed output block (using static/fixed Huffman codes).
 #[cfg(TDEFL_LESS_MEMORY)]
-const TDEFL_LZ_HASH_BITS: uint = 12;
-#[cfg(TDEFL_LESS_MEMORY)]
-const TDEFL_LZ_CODE_BUF_SIZE: uint = 24 * 1024;
-#[cfg(TDEFL_LESS_MEMORY)]
-enum TodoNameMeFlags { TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+mod memory_specific_constants {
+  pub const TDEFL_LZ_CODE_BUF_SIZE: uint = 24 * 1024;
+  pub const TDEFL_OUT_BUF_SIZE: uint = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10;
+  pub const TDEFL_MAX_HUFF_SYMBOLS: uint = 288;
+  pub const TDEFL_LZ_HASH_BITS: uint = 12;
+  pub enum TodoNameMeFlags { TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+  pub const TDEFL_LZ_HASH_SHIFT: uint = (TDEFL_LZ_HASH_BITS + 2) / 3;
+}
 #[cfg(not(TDEFL_LESS_MEMORY))]
-const TDEFL_LZ_HASH_BITS: uint = 15;
-#[cfg(not(TDEFL_LESS_MEMORY))]
-const TDEFL_LZ_CODE_BUF_SIZE: uint = 64 * 1024;
-#[cfg(not(TDEFL_LESS_MEMORY))]
-enum TodoNameMeFlags { TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10, TDEFL_MAX_HUFF_SYMBOLS = 288, TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SHIFT = (TDEFL_LZ_HASH_BITS + 2) / 3, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+mod memory_specific_constants {
+  pub const TDEFL_LZ_CODE_BUF_SIZE: uint = 64 * 1024;
+  pub const TDEFL_OUT_BUF_SIZE: uint = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10;
+  pub const TDEFL_MAX_HUFF_SYMBOLS: uint = 288;
+  pub const TDEFL_LZ_HASH_BITS: uint = 15;
+  pub enum TodoNameMeFlags { TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+  pub const TDEFL_LZ_HASH_SHIFT: uint = (TDEFL_LZ_HASH_BITS + 2) / 3;
+}
 
 // The low-level tdefl functions below may be used directly if the above helper functions aren't flexible enough. The low-level functions don't make any heap allocations, unlike the above helper functions.
 enum tdefl_status
