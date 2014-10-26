@@ -1906,7 +1906,7 @@ fn tdefl_flush_output_buffer(d: &mut tdefl_compressor) -> tdefl_status
 }
 
 // Compresses a block of data, consuming as much of the specified input buffer as possible, and writing as much compressed data to the specified output buffer as possible.
-fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const c_void, pIn_buf_size: *const size_t, pOut_buf: *mut c_void, pOut_buf_size: *const size_t, flush: tdefl_flush) -> tdefl_status
+fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_size: *const size_t, pOut_buf: *mut u8, pOut_buf_size: *const size_t, flush: tdefl_flush) -> tdefl_status
 {
   if (!d)
   {
