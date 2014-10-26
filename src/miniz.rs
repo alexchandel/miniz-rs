@@ -1921,7 +1921,7 @@ fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_size: *c
   d.m_out_buf_ofs = 0;
   d.m_flush = flush;
 
-  if ( ((d.m_pPut_buf_func != NULL) == ((pOut_buf != NULL) || (pOut_buf_size != NULL))) || (d.m_prev_return_status != TDEFL_STATUS_OKAY) ||
+  if ( ((d.m_pPut_buf_func != null()) == ((pOut_buf != null()) || (pOut_buf_size != null()))) || (d.m_prev_return_status != TDEFL_STATUS_OKAY) ||
         (d.m_wants_to_finish && (flush != TDEFL_FINISH)) || (pIn_buf_size && *pIn_buf_size && !pIn_buf) || (pOut_buf_size && *pOut_buf_size && !pOut_buf) )
   {
     if pIn_buf_size {*pIn_buf_size = 0;}
