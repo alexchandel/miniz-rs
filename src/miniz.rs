@@ -56,9 +56,19 @@ extern crate libc;
 use libc::{size_t, c_ulong, c_int, c_uchar, c_void};
 use std::ptr::{copy_memory, set_memory, null};
 use std::slice::raw::buf_as_slice;
-use std::mem::{size_of};
 use std::cmp::{max, min};
 use memory_specific_constants::*;
+
+trait SizeOf {
+    fn size_of(&self) -> uint;
+}
+
+impl <T> SizeOf for T {
+    fn size_of(&self) -> uint {
+        use std::mem::{size_of};
+        return size_of::<T>();
+    }
+}
 
 // ------------------- zlib-style API Definitions.
 
