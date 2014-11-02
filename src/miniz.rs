@@ -2093,34 +2093,45 @@ fn tdefl_compress_buffer(d: &mut tdefl_compressor, pIn_buf: *const u8, mut in_bu
 // pBut_buf_func: If NULL, output data will be supplied to the specified callback. In this case, the user should call the tdefl_compress_buffer() API for compression.
 // If pBut_buf_func is NULL the user should always call the tdefl_compress() API.
 // flags: See the above enums (TDEFL_HUFFMAN_ONLY, TDEFL_WRITE_ZLIB_HEADER, etc.)
-unsafe fn tdefl_init<'a>(d: &mut tdefl_compressor<'a>, pPut_buf_func: tdefl_put_buf_func_ptr<'a>, flags: CompressionFlags) -> tdefl_status
-{
-  d.m_pPut_buf_func = Some(pPut_buf_func);
-  d.m_flags = flags;
-  d.m_max_probes[0] = 1 + ((flags.bits() as uint & 0xFFF) + 2) / 3;
-  d.m_greedy_parsing = flags.contains(TDEFL_GREEDY_PARSING_FLAG);
-  d.m_max_probes[1] = 1 + (((flags.bits() as uint & 0xFFF) >> 2) + 2) / 3;
-  if !flags.contains(TDEFL_NONDETERMINISTIC_PARSING_FLAG) {for i in d.m_hash.iter_mut() {*i = 0};}
-  d.m_lookahead_pos = 0;
-  d.m_lookahead_size = 0;
-  d.m_dict_size = 0;
-  d.m_total_lz_bytes = 0;
-  d.m_lz_code_buf_dict_pos = 0;
-  d.m_bits_in = 0;
-  d.m_output_flush_ofs = 0;
-  d.m_output_flush_remaining = 0;
-  d.m_block_index = 0;
-  d.m_bit_buffer = 0;
-  d.m_finished = false; d.m_wants_to_finish = false;
-  d.m_pLZ_code_buf = d.m_lz_code_buf.as_mut_ptr().offset(1); d.m_pLZ_flags = d.m_lz_code_buf.as_mut_ptr(); d.m_num_flags_left = 8;
-  d.m_pOutput_buf = d.m_output_buf.as_mut_ptr(); d.m_pOutput_buf_end = d.m_output_buf.as_mut_ptr(); d.m_prev_return_status = TDEFL_STATUS_OKAY;
-  d.m_saved_match_dist = 0; d.m_saved_match_len = 0; d.m_saved_lit = 0; d.m_adler32 = 1;
-  d.m_pIn_buf = null::<u8>(); d.m_pOut_buf = null::<u8>() as *mut u8;
-  d.m_pIn_buf_size = null::<uint>() as *mut uint; d.m_pOut_buf_size = null::<uint>() as *mut uint;
-  d.m_flush = TDEFL_NO_FLUSH; d.m_pSrc = null(); d.m_src_buf_left = 0; d.m_out_buf_ofs = 0;
-  set_memory(d.m_huff_count[0u].as_mut_ptr(), 0, d.m_huff_count[0][0].size_of() * TDEFL_MAX_HUFF_SYMBOLS_0);
-  set_memory(d.m_huff_count[1u].as_mut_ptr(), 0, d.m_huff_count[1][0].size_of() * TDEFL_MAX_HUFF_SYMBOLS_1);
-  return TDEFL_STATUS_OKAY;
+impl<'a> tdefl_compressor<'a> {
+  unsafe fn new<'a>(pPut_buf_func: tdefl_put_buf_func_ptr<'a>, flags: CompressionFlags) -> tdefl_compressor<'a>
+  {
+    // if !flags.contains(TDEFL_NONDETERMINISTIC_PARSING_FLAG) {for i in d.m_hash.iter_mut() {*i = 0},}
+    let mut d = tdefl_compressor {
+      m_pPut_buf_func: Some(pPut_buf_func),
+      m_flags: flags,
+      m_max_probes: [1 + ((flags.bits() as uint & 0xFFF) + 2) / 3, 1 + (((flags.bits() as uint & 0xFFF) >> 2) + 2) / 3],
+      m_greedy_parsing: flags.contains(TDEFL_GREEDY_PARSING_FLAG),
+      m_lookahead_pos: 0,
+      m_lookahead_size: 0,
+      m_dict_size: 0,
+      m_total_lz_bytes: 0,
+      m_lz_code_buf_dict_pos: 0,
+      m_bits_in: 0,
+      m_output_flush_ofs: 0,
+      m_output_flush_remaining: 0,
+      m_block_index: 0,
+      m_bit_buffer: 0,
+      m_finished: false, m_wants_to_finish: false,
+      m_pLZ_code_buf: null::<u8>() as *mut u8, m_pLZ_flags: null::<u8>() as *mut u8, m_num_flags_left: 8,
+      m_pOutput_buf: null::<u8>() as *mut u8, m_pOutput_buf_end: null::<u8>() as *mut u8, m_prev_return_status: TDEFL_STATUS_OKAY,
+      m_saved_match_dist: 0, m_saved_match_len: 0, m_saved_lit: 0, m_adler32: 1,
+      m_pIn_buf: null::<u8>(), m_pOut_buf: null::<u8>() as *mut u8,
+      m_pIn_buf_size: null::<uint>() as *mut uint, m_pOut_buf_size: null::<uint>() as *mut uint,
+      m_flush: TDEFL_NO_FLUSH, m_pSrc: null(), m_src_buf_left: 0, m_out_buf_ofs: 0,
+      m_dict: [0u8, ..TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1],
+      m_huff_count: [[0u16, ..TDEFL_MAX_HUFF_SYMBOLS], ..TDEFL_MAX_HUFF_TABLES],
+      m_huff_codes: [[0u16, ..TDEFL_MAX_HUFF_SYMBOLS], ..TDEFL_MAX_HUFF_TABLES],
+      m_huff_code_sizes: [[0u8, ..TDEFL_MAX_HUFF_SYMBOLS], ..TDEFL_MAX_HUFF_TABLES],
+      m_lz_code_buf: [0u8, ..TDEFL_LZ_CODE_BUF_SIZE],
+      m_next: [0u16, ..TDEFL_LZ_DICT_SIZE],
+      m_hash: [0u16, ..TDEFL_LZ_HASH_SIZE],
+      m_output_buf: [0u8, ..TDEFL_OUT_BUF_SIZE],
+    };
+    d.m_pLZ_code_buf = d.m_lz_code_buf.as_mut_ptr().offset(1); d.m_pLZ_flags = d.m_lz_code_buf.as_mut_ptr();
+    d.m_pOutput_buf = d.m_output_buf.as_mut_ptr(); d.m_pOutput_buf_end = d.m_output_buf.as_mut_ptr();
+    return d;
+  }
 }
 
 fn tdefl_get_prev_return_status(d: &mut tdefl_compressor) -> tdefl_status
@@ -2136,9 +2147,9 @@ fn tdefl_get_adler32(d: &mut tdefl_compressor) -> u32
 // tdefl_compress_mem_to_output() compresses a block to an output stream. The above helpers use this function internally.
 fn tdefl_compress_mem_to_output(in_buf: &[u8], put_buf_func: tdefl_put_buf_func_ptr, flags: CompressionFlags) -> bool
 {
-  let mut comp: tdefl_compressor;
+  let mut comp = unsafe {tdefl_compressor::new(put_buf_func, flags)};
   let mut in_buf_size = in_buf.len();
-  return unsafe {tdefl_init(&mut comp, put_buf_func, flags) == TDEFL_STATUS_OKAY && tdefl_compress(
+  return unsafe {tdefl_compress(
       &mut comp,
       in_buf.as_ptr(),
       &mut in_buf_size as *mut uint,
