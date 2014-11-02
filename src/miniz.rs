@@ -174,31 +174,33 @@ struct tinfl_decompressor_tag
 // Set TDEFL_LESS_MEMORY to 1 to use less memory (compression will be slightly slower, and raw/dynamic blocks will be output more frequently).
 const TDEFL_LESS_MEMORY: int = 0;
 
-// tdefl_init() compression flags logically OR'd together (low 12 bits contain the max. number of probes per dictionary search):
-// TDEFL_DEFAULT_MAX_PROBES: The compressor defaults to 128 dictionary probes per dictionary search. 0=Huffman only, 1=Huffman+LZ (fastest/crap compression), 4095=Huffman+LZ (slowest/best compression).
-enum InitCompressionFlags
-{
-  TDEFL_HUFFMAN_ONLY = 0, TDEFL_DEFAULT_MAX_PROBES = 128, TDEFL_MAX_PROBES_MASK = 0xFFF
-}
-
-// TDEFL_WRITE_ZLIB_HEADER: If set, the compressor outputs a zlib header before the deflate data, and the Adler-32 of the source data at the end. Otherwise, you'll get raw deflate data.
-// TDEFL_COMPUTE_ADLER32: Always compute the adler-32 of the input data (even when not writing zlib headers).
-// TDEFL_GREEDY_PARSING_FLAG: Set to use faster greedy parsing, instead of more efficient lazy parsing.
-// TDEFL_NONDETERMINISTIC_PARSING_FLAG: Enable to decrease the compressor's initialization time to the minimum, but the output may vary from run to run given the same input (depending on the contents of memory).
-// TDEFL_RLE_MATCHES: Only look for RLE matches (matches with a distance of 1)
-// TDEFL_FILTER_MATCHES: Discards matches <= 5 chars if enabled.
-// TDEFL_FORCE_ALL_STATIC_BLOCKS: Disable usage of optimized Huffman tables.
-// TDEFL_FORCE_ALL_RAW_BLOCKS: Only use raw (uncompressed) deflate blocks.
-enum OtherCompressionFlags
-{
-  TDEFL_WRITE_ZLIB_HEADER             = 0x01000,
-  TDEFL_COMPUTE_ADLER32               = 0x02000,
-  TDEFL_GREEDY_PARSING_FLAG           = 0x04000,
-  TDEFL_NONDETERMINISTIC_PARSING_FLAG = 0x08000,
-  TDEFL_RLE_MATCHES                   = 0x10000,
-  TDEFL_FILTER_MATCHES                = 0x20000,
-  TDEFL_FORCE_ALL_STATIC_BLOCKS       = 0x40000,
-  TDEFL_FORCE_ALL_RAW_BLOCKS          = 0x80000
+/// tdefl_init() compression flags logically OR'd together (low 12 bits contain the max. number of probes per dictionary search):
+/// TDEFL_DEFAULT_MAX_PROBES: The compressor defaults to 128 dictionary probes per dictionary search. 0=Huffman only, 1=Huffman+LZ (fastest/crap compression), 4095=Huffman+LZ (slowest/best compression).
+///
+/// TDEFL_WRITE_ZLIB_HEADER: If set, the compressor outputs a zlib header before the deflate data, and the Adler-32 of the source data at the end. Otherwise, you'll get raw deflate data.
+/// TDEFL_COMPUTE_ADLER32: Always compute the adler-32 of the input data (even when not writing zlib headers).
+/// TDEFL_GREEDY_PARSING_FLAG: Set to use faster greedy parsing, instead of more efficient lazy parsing.
+/// TDEFL_NONDETERMINISTIC_PARSING_FLAG: Enable to decrease the compressor's initialization time to the minimum, but the output may vary from run to run given the same input (depending on the contents of memory).
+/// TDEFL_RLE_MATCHES: Only look for RLE matches (matches with a distance of 1)
+/// TDEFL_FILTER_MATCHES: Discards matches <= 5 chars if enabled.
+/// TDEFL_FORCE_ALL_STATIC_BLOCKS: Disable usage of optimized Huffman tables.
+/// TDEFL_FORCE_ALL_RAW_BLOCKS: Only use raw (uncompressed) deflate blocks.
+bitflags! {
+  flags CompressionFlags: u32
+  {
+    const TDEFL_HUFFMAN_ONLY                  =       0,
+    const TDEFL_FASTEST_MAX_PROBES            =     0x1,
+    const TDEFL_DEFAULT_MAX_PROBES            =    0x80,
+    const TDEFL_MAX_PROBES_MASK               =   0xFFF,
+    const TDEFL_WRITE_ZLIB_HEADER             = 0x01000,
+    const TDEFL_COMPUTE_ADLER32               = 0x02000,
+    const TDEFL_GREEDY_PARSING_FLAG           = 0x04000,
+    const TDEFL_NONDETERMINISTIC_PARSING_FLAG = 0x08000,
+    const TDEFL_RLE_MATCHES                   = 0x10000,
+    const TDEFL_FILTER_MATCHES                = 0x20000,
+    const TDEFL_FORCE_ALL_STATIC_BLOCKS       = 0x40000,
+    const TDEFL_FORCE_ALL_RAW_BLOCKS          = 0x80000
+  }
 }
 
 // Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
