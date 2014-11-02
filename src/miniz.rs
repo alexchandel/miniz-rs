@@ -136,10 +136,10 @@ fn tinfl_get_adler32(r: &tinfl_decompressor) -> u32 {
 }
 
 // Internal/private bits follow.
-enum InternalPriviteBits
-{
-  TINFL_MAX_HUFF_TABLES = 3, TINFL_MAX_HUFF_SYMBOLS_0 = 288, TINFL_MAX_HUFF_SYMBOLS_1 = 32, TINFL_MAX_HUFF_SYMBOLS_2 = 19
-}
+const TINFL_MAX_HUFF_TABLES: uint = 3;
+const TINFL_MAX_HUFF_SYMBOLS_0: uint = 288;
+const TINFL_MAX_HUFF_SYMBOLS_1: uint = 32;
+const TINFL_MAX_HUFF_SYMBOLS_2: uint = 19;
 const TINFL_FAST_LOOKUP_BITS: uint = 10;
 const TINFL_FAST_LOOKUP_SIZE: uint = 1 << TINFL_FAST_LOOKUP_BITS;
 
