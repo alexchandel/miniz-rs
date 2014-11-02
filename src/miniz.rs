@@ -109,8 +109,6 @@ const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
 pub type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
 
-type tinfl_decompressor = tinfl_decompressor_tag;
-
 // Max size of LZ dictionary.
 const TINFL_LZ_DICT_SIZE: uint = 32768;
 
@@ -150,6 +148,16 @@ struct tinfl_huff_table
   m_tree: [i16, ..TINFL_MAX_HUFF_SYMBOLS_0 * 2]
 }
 
+impl tinfl_huff_table {
+  fn new() -> tinfl_huff_table {
+    tinfl_huff_table {
+      m_code_size: [0u8, ..TINFL_MAX_HUFF_SYMBOLS_0],
+      m_look_up: [0i16, ..TINFL_FAST_LOOKUP_SIZE],
+      m_tree: [0i16, ..TINFL_MAX_HUFF_SYMBOLS_0 * 2]
+    }
+  }
+}
+
 #[cfg(target_word_size = "64")]
   type tinfl_bit_buf_t = u64;
 #[cfg(target_word_size = "64")]
@@ -159,14 +167,28 @@ struct tinfl_huff_table
 #[cfg(not(target_word_size = "64"))]
   const TINFL_BITBUF_SIZE: size_t = (32);
 
-struct tinfl_decompressor_tag
+struct tinfl_decompressor
 {
   m_state: u32, m_num_bits: u32, m_zhdr0: u32, m_zhdr1: u32, m_z_adler32: u32, m_final: u32, m_type: u32,
   m_check_adler32: u32, m_dist: u32, m_counter: u32, m_num_extra: u32, m_table_sizes: [u32, ..TINFL_MAX_HUFF_TABLES],
   m_bit_buf: tinfl_bit_buf_t,
-  m_dist_from_out_buf_start: libc::size_t,
+  m_dist_from_out_buf_start: uint,
   m_tables: [tinfl_huff_table, ..TINFL_MAX_HUFF_TABLES],
   m_raw_header: [u8, ..4], m_len_codes: [u8, ..TINFL_MAX_HUFF_SYMBOLS_0 + TINFL_MAX_HUFF_SYMBOLS_1 + 137]
+}
+
+impl tinfl_decompressor {
+  /// Initializes the decompressor to its initial state.
+  fn new() -> tinfl_decompressor {
+    tinfl_decompressor {
+      m_state: 0u32, m_num_bits: 0u32, m_zhdr0: 0u32, m_zhdr1: 0u32, m_z_adler32: 0u32, m_final: 0u32, m_type: 0u32,
+      m_check_adler32: 0u32, m_dist: 0u32, m_counter: 0u32, m_num_extra: 0u32, m_table_sizes: [0u32, ..TINFL_MAX_HUFF_TABLES],
+      m_bit_buf: 0,
+      m_dist_from_out_buf_start: 0u,
+      m_tables: [tinfl_huff_table::new(), ..TINFL_MAX_HUFF_TABLES],
+      m_raw_header: [0u8, ..4], m_len_codes: [0u8, ..TINFL_MAX_HUFF_SYMBOLS_0 + TINFL_MAX_HUFF_SYMBOLS_1 + 137]
+    }
+  }
 }
 
 // ------------------- Low-level Compression API Definitions
@@ -733,8 +755,7 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
 ///  The caller must call mz_free() on the returned block when it's no longer needed.
 pub fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: DecompressionFlags) -> Option<Vec<u8>>
 {
-  let mut decomp: tinfl_decompressor;
-  tinfl_init(&decomp);
+  let mut decomp = tinfl_decompressor::new();
   // Create output buffer.
   // WARNING: we no longer pass a NULL pointer to tinfl_decompress
   // on the first pass (as miniz.c did). TODO: ensure this decompresses correctly.
@@ -777,7 +798,7 @@ pub fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: DecompressionFlags) -
 // Returns TINFL_DECOMPRESS_MEM_TO_MEM_FAILED on failure, or the number of bytes written on success.
 pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: DecompressionFlags) -> uint
 {
-  let mut decomp: tinfl_decompressor; tinfl_init(&decomp);
+  let mut decomp = tinfl_decompressor::new();
   let mut src_buf_len: uint = src_buf.len();
   let mut out_buf_len: uint = out_buf.len();
   let status: tinfl_status = tinfl_decompress(
@@ -795,11 +816,11 @@ pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: Dec
 // Returns 1 on success or 0 on failure.
 pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func:&mut tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: DecompressionFlags) -> (bool, uint)
 {
-  let decomp: tinfl_decompressor; tinfl_init(&decomp);
   let dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
   let in_buf_ofs: uint = 0;
   let dict_ofs: uint = 0;
   let result: bool = false;
+  let mut decomp = tinfl_decompressor::new();
   loop {
     let in_buf_size: uint = in_buf.len() - in_buf_ofs;
     let dst_buf_size: uint = TINFL_LZ_DICT_SIZE - dict_ofs;
