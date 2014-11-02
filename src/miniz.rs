@@ -222,8 +222,9 @@ mod memory_specific_constants {
   pub const TDEFL_OUT_BUF_SIZE: uint = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10;
   pub const TDEFL_MAX_HUFF_SYMBOLS: uint = 288;
   pub const TDEFL_LZ_HASH_BITS: uint = 12;
-  pub enum TodoNameMeFlags { TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+  pub const TDEFL_LEVEL1_HASH_SIZE_MASK: uint = 4095;
   pub const TDEFL_LZ_HASH_SHIFT: uint = (TDEFL_LZ_HASH_BITS + 2) / 3;
+  pub const TDEFL_LZ_HASH_SIZE: uint = 1 << TDEFL_LZ_HASH_BITS;
 }
 #[cfg(not(TDEFL_LESS_MEMORY))]
 mod memory_specific_constants {
@@ -231,8 +232,9 @@ mod memory_specific_constants {
   pub const TDEFL_OUT_BUF_SIZE: uint = (TDEFL_LZ_CODE_BUF_SIZE * 13 ) / 10;
   pub const TDEFL_MAX_HUFF_SYMBOLS: uint = 288;
   pub const TDEFL_LZ_HASH_BITS: uint = 15;
-  pub enum TodoNameMeFlags { TDEFL_LEVEL1_HASH_SIZE_MASK = 4095, TDEFL_LZ_HASH_SIZE = 1 << TDEFL_LZ_HASH_BITS }
+  pub const TDEFL_LEVEL1_HASH_SIZE_MASK: uint = 4095;
   pub const TDEFL_LZ_HASH_SHIFT: uint = (TDEFL_LZ_HASH_BITS + 2) / 3;
+  pub const TDEFL_LZ_HASH_SIZE: uint = 1 << TDEFL_LZ_HASH_BITS;
 }
 
 // The low-level tdefl functions below may be used directly if the above helper functions aren't flexible enough. The low-level functions don't make any heap allocations, unlike the above helper functions.
