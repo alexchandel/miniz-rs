@@ -107,7 +107,7 @@ bitflags! {
 
 const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
-pub type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
+pub type tinfl_put_buf_func_ptr<'a> = &'a mut FnMut<(*const u8, uint), bool> + 'a;
 
 /// Max size of LZ dictionary.
 const TINFL_LZ_DICT_SIZE: uint = 32768;
@@ -820,7 +820,7 @@ pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: Dec
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
 // Returns 1 on success or 0 on failure.
-pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func:&mut tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: DecompressionFlags) -> (bool, uint)
+pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: DecompressionFlags) -> (bool, uint)
 {
   let mut decomp = tinfl_decompressor::new();
   let mut dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
@@ -843,7 +843,7 @@ pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func:&mut tinfl_p
     // Increase input buffer to reflect data copied out.
     in_buf_ofs += in_buf_size;
 
-    if (dst_buf_size > 0) && ! put_buf_func.call_mut((dict[dict_ofs..dict_ofs+dst_buf_size],)) {break;}
+    if (dst_buf_size > 0) && ! put_buf_func.call_mut((dict[dict_ofs..dict_ofs+dst_buf_size].as_ptr(),dst_buf_size)) {break;}
     if status != TINFL_STATUS_HAS_MORE_OUTPUT {
       result = status == TINFL_STATUS_DONE;
       break;
