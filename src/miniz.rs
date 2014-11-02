@@ -50,11 +50,12 @@
 
 #![feature(macro_rules, slicing_syntax, globs, unboxed_closures, if_let, asm)]
 #![crate_type = "lib"]
+#![allow(non_camel_case_types, non_snake_case)]
 
 extern crate libc;
 
-use libc::{size_t, c_ulong, c_int, c_uchar, c_void};
-use std::ptr::{copy_memory, set_memory, null};
+use libc::{c_int};
+use std::ptr::{copy_memory, null};
 use std::slice::raw::buf_as_slice;
 use std::cmp::{max, min};
 use memory_specific_constants::*;
@@ -73,11 +74,11 @@ impl <T> SizeOf for T {
 // ------------------- zlib-style API Definitions.
 
 // For more compatibility with zlib, miniz.c uses unsigned long for some parameters/struct members. Beware: mz_ulong can be either 32 or 64-bits!
-type mz_ulong = libc::c_ulong;
+// type mz_ulong = libc::c_ulong;
 
-const MZ_ADLER32_INIT: mz_ulong = (1);
+const MZ_ADLER32_INIT: u32 = (1);
 
-const MZ_CRC32_INIT: mz_ulong = (0);
+const MZ_CRC32_INIT: u32 = (0);
 
 // Compression strategies.
 enum CompressionStrategies { MZ_DEFAULT_STRATEGY = 0, MZ_FILTERED = 1, MZ_HUFFMAN_ONLY = 2, MZ_RLE = 3, MZ_FIXED = 4 }
@@ -91,11 +92,11 @@ type mz_uint = libc::c_uint;
 
 // ------------------- Low-level Decompression API Definitions
 
-// Decompression flags used by tinfl_decompress().
-// TINFL_FLAG_PARSE_ZLIB_HEADER: If set, the input has a valid zlib header and ends with an adler32 checksum (it's a valid zlib stream). Otherwise, the input is a raw deflate stream.
-// TINFL_FLAG_HAS_MORE_INPUT: If set, there are more input bytes available beyond the end of the supplied input buffer. If clear, the input buffer contains all remaining input.
-// TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF: If set, the output buffer is large enough to hold the entire decompressed stream. If clear, the output buffer is at least the size of the dictionary (typically 32KB).
-// TINFL_FLAG_COMPUTE_ADLER32: Force adler-32 checksum computation of the decompressed bytes.
+/// Decompression flags used by tinfl_decompress().
+/// TINFL_FLAG_PARSE_ZLIB_HEADER: If set, the input has a valid zlib header and ends with an adler32 checksum (it's a valid zlib stream). Otherwise, the input is a raw deflate stream.
+/// TINFL_FLAG_HAS_MORE_INPUT: If set, there are more input bytes available beyond the end of the supplied input buffer. If clear, the input buffer contains all remaining input.
+/// TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF: If set, the output buffer is large enough to hold the entire decompressed stream. If clear, the output buffer is at least the size of the dictionary (typically 32KB).
+/// TINFL_FLAG_COMPUTE_ADLER32: Force adler-32 checksum computation of the decompressed bytes.
 bitflags! {
   flags DecompressionFlags: u32 {
     const TINFL_FLAG_PARSE_ZLIB_HEADER = 1,
@@ -125,10 +126,6 @@ enum tinfl_status
   TINFL_STATUS_HAS_MORE_OUTPUT = 2
 }
 
-// Initializes the decompressor to its initial state.
-/*fn tinfl_init(r: &mut tinfl_decompressor) {
-  r.m_state = 0;
-}*/
 fn tinfl_get_adler32(r: &tinfl_decompressor) -> u32 {
   r.m_check_adler32
 }
@@ -161,11 +158,11 @@ impl tinfl_huff_table {
 #[cfg(target_word_size = "64")]
   type tinfl_bit_buf_t = u64;
 #[cfg(target_word_size = "64")]
-  const TINFL_BITBUF_SIZE: size_t = (64);
+  const TINFL_BITBUF_SIZE: uint = (64);
 #[cfg(not(target_word_size = "64"))]
   type tinfl_bit_buf_t = u32;
 #[cfg(not(target_word_size = "64"))]
-  const TINFL_BITBUF_SIZE: size_t = (32);
+  const TINFL_BITBUF_SIZE: uint = (32);
 
 struct tinfl_decompressor
 {
@@ -280,7 +277,7 @@ enum tdefl_flush
   TDEFL_FINISH = 4
 }
 
-// tdefl's compression state structure.
+/// tdefl's compression state structure.
 struct tdefl_compressor <'a>
 {
   m_pPut_buf_func: Option<tdefl_put_buf_func_ptr<'a>>,
@@ -325,7 +322,7 @@ struct tdefl_compressor <'a>
 
 /// Adler-32 checksum algorithm
 /// mz_adler32() returns the initial adler-32 value to use when called with ptr==NULL.
-fn mz_adler32(adler: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
+fn mz_adler32(adler: u32, buf: Option<&[u8]>) -> u32
 {
   let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_ADLER32_INIT };
   let mut s1: u32 = (adler & 0xffff) as u32;
@@ -337,12 +334,12 @@ fn mz_adler32(adler: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
     }
     s1 %= 65521u32; s2 %= 65521u32; buf = buf[block_len..]; block_len = 5552u;
   }
-  return ((s2 << 16) + s1) as mz_ulong;
+  return ((s2 << 16) + s1) as u32;
 }
 
 /// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor cache usage against speed": http://www.geocities.com/malbrain/
 /// mz_crc32() returns the initial CRC-32 value to use when called with ptr==NULL.
-fn mz_crc32(crc: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
+fn mz_crc32(crc: u32, buf: Option<&[u8]>) -> u32
 {
   let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_CRC32_INIT };
   let s_crc32: [u32, ..16] = [ 0, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
@@ -353,7 +350,7 @@ fn mz_crc32(crc: mz_ulong, buf: Option<&[u8]>) -> mz_ulong
     crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b & 0xF)) as uint];
     crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b >> 4)) as uint];
   }
-  return !crcu32 as mz_ulong;
+  return !crcu32;
 }
 
 // ------------------- Low-level Decompression (completely independent from all compression API's)
@@ -392,10 +389,10 @@ macro_rules! TINFL_GET_BITS( ($state_index:expr, $b:expr, $n:expr) => (
   do { if (num_bits < (mz_uint)(n)) { TINFL_NEED_BITS!(state_index, n); } b = bit_buf & ((1 << (n)) - 1); bit_buf >>= (n); num_bits -= (n); } MZ_MACRO_END);
 )
 
-// TINFL_HUFF_BITBUF_FILL() is only used rarely, when the number of bytes remaining in the input buffer falls below 2.
-// It reads just enough bytes from the input stream that are needed to decode the next Huffman code (and absolutely no more). It works by trying to fully decode a
-// Huffman code by using whatever bits are currently present in the bit buffer. If this fails, it reads another byte, and tries again until it succeeds or until the
-// bit buffer contains >=15 bits (deflate's max. Huffman code size).
+/// TINFL_HUFF_BITBUF_FILL() is only used rarely, when the number of bytes remaining in the input buffer falls below 2.
+/// It reads just enough bytes from the input stream that are needed to decode the next Huffman code (and absolutely no more). It works by trying to fully decode a
+/// Huffman code by using whatever bits are currently present in the bit buffer. If this fails, it reads another byte, and tries again until it succeeds or until the
+/// bit buffer contains >=15 bits (deflate's max. Huffman code size).
 macro_rules! TINFL_HUFF_BITBUF_FILL( (
   $state_index:expr, $pHuff:expr) => (
   loop {
@@ -414,10 +411,10 @@ macro_rules! TINFL_HUFF_BITBUF_FILL( (
   });
 )
 
-// TINFL_HUFF_DECODE() decodes the next Huffman coded symbol. It's more complex than you would initially expect because the zlib API expects the decompressor to never read
-// beyond the final byte of the deflate stream. (In other words, when this macro wants to read another byte from the input, it REALLY needs another byte in order to fully
-// decode the next Huffman code.) Handling this properly is particularly important on raw deflate (non-zlib) streams, which aren't followed by a byte aligned adler-32.
-// The slow path is only executed at the very end of the input buffer.
+/// TINFL_HUFF_DECODE() decodes the next Huffman coded symbol. It's more complex than you would initially expect because the zlib API expects the decompressor to never read
+/// beyond the final byte of the deflate stream. (In other words, when this macro wants to read another byte from the input, it REALLY needs another byte in order to fully
+/// decode the next Huffman code.) Handling this properly is particularly important on raw deflate (non-zlib) streams, which aren't followed by a byte aligned adler-32.
+/// The slow path is only executed at the very end of the input buffer.
 macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (loop {
   int temp; mz_uint code_len, c;
   if (num_bits < 15) {
@@ -434,8 +431,8 @@ macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (
   } sym = temp; bit_buf >>= code_len; num_bits -= code_len; break;}; );
 )
 
-// Main low-level decompressor coroutine function. This is the only function actually needed for decompression. All the other functions are just high-level helpers for improved usability.
-// This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output.
+/// Main low-level decompressor coroutine function. This is the only function actually needed for decompression. All the other functions are just high-level helpers for improved usability.
+/// This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output.
 unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: &mut uint, pOut_buf_start: *mut u8, pOut_buf_next: *mut u8, pOut_buf_size: &mut uint, decomp_flags: DecompressionFlags) -> tinfl_status
 {
   let s_length_base: [int, ..31] = [ 3,4,5,6,7,8,9,10,11,13, 15,17,19,23,27,31,35,43,51,59, 67,83,99,115,131,163,195,227,258,0,0 ];
@@ -448,7 +445,7 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
   let mut status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: u32; let dist: u32; let counter: u32; let num_extra: u32; let bit_buf: tinfl_bit_buf_t;
   let pIn_buf_cur: *const u8 = pIn_buf_next; let pIn_buf_end: *const u8 = pIn_buf_next.offset(*pIn_buf_size as int);
   let pOut_buf_cur: *mut u8 = pOut_buf_next; let pOut_buf_end:  *mut u8 = pOut_buf_next.offset(*pOut_buf_size as int);
-  let out_buf_size_mask: size_t = if decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as size_t} else {((pOut_buf_next as uint - pOut_buf_start as uint) + *pOut_buf_size) as u64 - 1};
+  let out_buf_size_mask: uint = if decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as uint} else {((pOut_buf_next as uint - pOut_buf_start as uint) + *pOut_buf_size) - 1};
   let dist_from_out_buf_start: uint;
 
   // Ensure the output buffer's size is a power of 2, unless the output buffer is large enough to hold the entire output file (in which case it doesn't matter).
@@ -741,7 +738,7 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
     if decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32) && (status as i8 >= 0)
     {
       buf_as_slice(pOut_buf_next as *const u8, *pOut_buf_size, |out_buf_next_slice| {
-        r.m_check_adler32 = mz_adler32(r.m_check_adler32 as mz_ulong, Some(out_buf_next_slice)) as u32;
+        r.m_check_adler32 = mz_adler32(r.m_check_adler32, Some(out_buf_next_slice));
       });
       if ((status == TINFL_STATUS_DONE) && decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER) && (r.m_check_adler32 != r.m_z_adler32)) {status = TINFL_STATUS_ADLER32_MISMATCH;};
     }
@@ -820,7 +817,7 @@ pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: Dec
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
 // Returns 1 on success or 0 on failure.
-pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: DecompressionFlags) -> (bool, uint)
+pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_buf_func_ptr, flags: DecompressionFlags) -> (bool, uint)
 {
   let mut decomp = tinfl_decompressor::new();
   let mut dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
@@ -960,7 +957,7 @@ fn tdefl_calculate_minimum_redundancy(A: &mut [tdefl_sym_freq], n: uint)
   }
 }
 
-// Limits canonical Huffman code table's max code size.
+/// Limits canonical Huffman code table's max code size.
 const TDEFL_MAX_SUPPORTED_HUFF_CODESIZE: uint = 32;
 fn tdefl_huffman_enforce_max_code_size(pNum_codes: &mut[uint], code_list_len: uint, max_code_size: uint)
 {
@@ -1999,7 +1996,7 @@ unsafe fn tdefl_flush_output_buffer(d: &mut tdefl_compressor) -> tdefl_status
   return if d.m_finished && d.m_output_flush_remaining==0 {TDEFL_STATUS_DONE} else {TDEFL_STATUS_OKAY};
 }
 
-// Compresses a block of data, consuming as much of the specified input buffer as possible, and writing as much compressed data to the specified output buffer as possible.
+/// Compresses a block of data, consuming as much of the specified input buffer as possible, and writing as much compressed data to the specified output buffer as possible.
 unsafe fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_size: *mut uint, pOut_buf: *mut u8, pOut_buf_size: *mut uint, flush: tdefl_flush) -> tdefl_status
 {
   /*if (!d)
@@ -2059,7 +2056,7 @@ unsafe fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_s
 
   if d.m_flags.contains(TDEFL_WRITE_ZLIB_HEADER | TDEFL_COMPUTE_ADLER32) && pIn_buf.is_not_null() {
     buf_as_slice(pIn_buf as *const u8, d.m_pSrc as uint - pIn_buf as uint, |buf| {
-      d.m_adler32 = mz_adler32(d.m_adler32 as mz_ulong, Some(buf)) as u32;
+      d.m_adler32 = mz_adler32(d.m_adler32, Some(buf));
     });
   }
 
@@ -2080,19 +2077,11 @@ unsafe fn tdefl_compress(d: &mut tdefl_compressor, pIn_buf: *const u8, pIn_buf_s
   return d.m_prev_return_status;
 }
 
-// tdefl_compress_buffer() is only usable when the tdefl_init() is called with a non-NULL tdefl_put_buf_func_ptr.
-// tdefl_compress_buffer() always consumes the entire input buffer.
-fn tdefl_compress_buffer(d: &mut tdefl_compressor, pIn_buf: *const u8, mut in_buf_size: uint, flush: tdefl_flush) -> tdefl_status
-{
-  assert!(d.m_pPut_buf_func.is_some());
-  return unsafe {tdefl_compress(d, pIn_buf, &mut in_buf_size as *mut uint, null::<u8>() as *mut u8, null::<uint>() as *mut uint, flush)};
-}
-
-// Initializes the compressor.
-// There is no corresponding deinit() function because the tdefl API's do not dynamically allocate memory.
-// pBut_buf_func: If NULL, output data will be supplied to the specified callback. In this case, the user should call the tdefl_compress_buffer() API for compression.
-// If pBut_buf_func is NULL the user should always call the tdefl_compress() API.
-// flags: See the above enums (TDEFL_HUFFMAN_ONLY, TDEFL_WRITE_ZLIB_HEADER, etc.)
+/// Initializes the compressor.
+/// There is no corresponding deinit() function because the tdefl API's do not dynamically allocate memory.
+/// pBut_buf_func: If NULL, output data will be supplied to the specified callback. In this case, the user should call the tdefl_compress_buffer() API for compression.
+/// If pBut_buf_func is NULL the user should always call the tdefl_compress() API.
+/// flags: See the above enums (TDEFL_HUFFMAN_ONLY, TDEFL_WRITE_ZLIB_HEADER, etc.)
 impl<'a> tdefl_compressor<'a> {
   unsafe fn new<'a>(pPut_buf_func: tdefl_put_buf_func_ptr<'a>, flags: CompressionFlags) -> tdefl_compressor<'a>
   {
@@ -2158,15 +2147,15 @@ fn tdefl_compress_mem_to_output(in_buf: &[u8], put_buf_func: tdefl_put_buf_func_
       TDEFL_FINISH) == TDEFL_STATUS_DONE};
 }
 
-// High level compression functions:
-// tdefl_compress_mem_to_heap() compresses a block in memory to a heap block allocated via malloc().
-// On entry:
-//  pSrc_buf, src_buf_len: Pointer and size of source block to compress.
-//  flags: The max match finder probes (default is 128) logically OR'd against the above flags. Higher probes are slower but improve compression.
-// On return:
-//  Function returns a pointer to the compressed data, or NULL on failure.
-//  *pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data.
-//  The caller must free() the returned block when it's no longer needed.
+/// High level compression functions:
+/// tdefl_compress_mem_to_heap() compresses a block in memory to a heap block allocated via malloc().
+/// On entry:
+///  pSrc_buf, src_buf_len: Pointer and size of source block to compress.
+///  flags: The max match finder probes (default is 128) logically OR'd against the above flags. Higher probes are slower but improve compression.
+/// On return:
+///  Function returns a pointer to the compressed data, or NULL on failure.
+///  *pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data.
+///  The caller must free() the returned block when it's no longer needed.
 pub fn tdefl_compress_mem_to_heap(src_buf: &[u8], flags: CompressionFlags) -> Option<Vec<u8>>
 {
   let mut out_buf = Vec::from_elem(128, 0u8);
@@ -2192,8 +2181,8 @@ pub fn tdefl_compress_mem_to_heap(src_buf: &[u8], flags: CompressionFlags) -> Op
   return Some(out_buf);
 }
 
-// tdefl_compress_mem_to_mem() compresses a block in memory to another block in memory.
-// Returns 0 on failure.
+/// tdefl_compress_mem_to_mem() compresses a block in memory to another block in memory.
+/// Returns 0 on failure.
 pub fn tdefl_compress_mem_to_mem(dst_buf: &mut[u8], src_buf: &[u8], flags: CompressionFlags) -> Option<uint>
 {
   let mut out_size = 0u;
