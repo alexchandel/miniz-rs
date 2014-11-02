@@ -433,7 +433,7 @@ macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (
 
 // Main low-level decompressor coroutine function. This is the only function actually needed for decompression. All the other functions are just high-level helpers for improved usability.
 // This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output.
-fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: &mut uint, pOut_buf_start: *const u8, pOut_buf_next: *const u8, pOut_buf_size: &mut uint, decomp_flags: DecompressionFlags) -> tinfl_status
+unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: &mut uint, pOut_buf_start: *mut u8, pOut_buf_next: *mut u8, pOut_buf_size: &mut uint, decomp_flags: DecompressionFlags) -> tinfl_status
 {
   let s_length_base: [int, ..31] = [ 3,4,5,6,7,8,9,10,11,13, 15,17,19,23,27,31,35,43,51,59, 67,83,99,115,131,163,195,227,258,0,0 ];
   let s_length_extra: [int, ..31]= [ 0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0 ];
@@ -442,11 +442,11 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
   let s_length_dezigzag: [u8, ..19] = [ 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 ];
   let s_min_table_sizes: [int, ..3] = [ 257, 1, 4 ];
 
-  let status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: u32; let dist: u32; let counter: u32; let num_extra: u32; let bit_buf: tinfl_bit_buf_t;
+  let mut status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: u32; let dist: u32; let counter: u32; let num_extra: u32; let bit_buf: tinfl_bit_buf_t;
   let pIn_buf_cur: *const u8 = pIn_buf_next; let pIn_buf_end: *const u8 = pIn_buf_next.offset(*pIn_buf_size as int);
-  let pOut_buf_cur: *const u8 = pOut_buf_next; let pOut_buf_end:  *const u8 = pOut_buf_next.offset(*pOut_buf_size as int);
+  let pOut_buf_cur: *mut u8 = pOut_buf_next; let pOut_buf_end:  *mut u8 = pOut_buf_next.offset(*pOut_buf_size as int);
   let out_buf_size_mask: size_t = if decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as size_t} else {((pOut_buf_next as uint - pOut_buf_start as uint) + *pOut_buf_size) as u64 - 1};
-  let dist_from_out_buf_start: size_t;
+  let dist_from_out_buf_start: uint;
 
   // Ensure the output buffer's size is a power of 2, unless the output buffer is large enough to hold the entire output file (in which case it doesn't matter).
   if (((out_buf_size_mask + 1) & out_buf_size_mask != 0) || (pOut_buf_next < pOut_buf_start)) { *pIn_buf_size = 0; *pOut_buf_size = 0; return TINFL_STATUS_BAD_PARAM; }
@@ -730,13 +730,14 @@ fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf
   // TINFL_CR_FINISH
   }
 
-  let common_exit = || {
+  asm!("common_exit:" :::: "volatile");
+  {
     r.m_num_bits = num_bits; r.m_bit_buf = bit_buf; r.m_dist = dist; r.m_counter = counter; r.m_num_extra = num_extra; r.m_dist_from_out_buf_start = dist_from_out_buf_start;
     *pIn_buf_size = pIn_buf_cur as uint - pIn_buf_next as uint;
     *pOut_buf_size = pOut_buf_cur as uint - pOut_buf_next as uint;
     if decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32) && (status as i8 >= 0)
     {
-      buf_as_slice(pOut_buf_next, *pOut_buf_size, |out_buf_next_slice| {
+      buf_as_slice(pOut_buf_next as *const u8, *pOut_buf_size, |out_buf_next_slice| {
         r.m_check_adler32 = mz_adler32(r.m_check_adler32 as mz_ulong, Some(out_buf_next_slice)) as u32;
       });
       if ((status == TINFL_STATUS_DONE) && decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER) && (r.m_check_adler32 != r.m_z_adler32)) {status = TINFL_STATUS_ADLER32_MISMATCH;};
@@ -767,14 +768,15 @@ pub fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: DecompressionFlags) -
   loop {
     let mut src_buf_size: uint = src_buf.len() - src_buf_ofs;
     let mut out_buf_size: uint = out_buf.len() - out_buf_ofs;
-    let status: tinfl_status = tinfl_decompress(
+    let status: tinfl_status = unsafe {tinfl_decompress(
       &mut decomp,
       src_buf[src_buf_ofs..].as_ptr(),
       &mut src_buf_size,
-      out_buf[].as_ptr(),
-      out_buf[out_buf_ofs..].as_ptr(),
+      out_buf[mut].as_mut_ptr(),
+      out_buf[mut out_buf_ofs..].as_mut_ptr(),
       &mut out_buf_size,
-      (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+      (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF
+    )};
 
     if (status as i8) < 0 || (status == TINFL_STATUS_NEEDS_MORE_INPUT) {return None;}
     // now, status is either TINFL_STATUS_HAS_MORE_OUTPUT or TINFL_STATUS_DONE
@@ -787,7 +789,7 @@ pub fn tinfl_decompress_mem_to_heap(src_buf: &[u8], flags: DecompressionFlags) -
     // If all data is copied, end.
     if status == TINFL_STATUS_DONE {break;}
     // Otherwise, double the output buffer capacity & length.
-    out_buf.grow(out_buf.len(), 0u8);
+    {let _borrow_temp = out_buf.len(); out_buf.grow(_borrow_temp, 0u8)};
   }
   // Set length of output buffer to number of bytes copied, instead of capacity.
   unsafe {out_buf.set_len(out_buf_ofs)};
@@ -801,37 +803,39 @@ pub fn tinfl_decompress_mem_to_mem(out_buf: &mut[u8], src_buf: &[u8], flags: Dec
   let mut decomp = tinfl_decompressor::new();
   let mut src_buf_len: uint = src_buf.len();
   let mut out_buf_len: uint = out_buf.len();
-  let status: tinfl_status = tinfl_decompress(
+  let status: tinfl_status = unsafe{tinfl_decompress(
     &mut decomp,
     src_buf.as_ptr(),
     &mut src_buf_len,
-    out_buf.as_ptr(),
-    out_buf.as_ptr(),
+    out_buf.as_mut_ptr(),
+    out_buf.as_mut_ptr(),
     &mut out_buf_len,
-    (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
-  if status != TINFL_STATUS_DONE {TINFL_DECOMPRESS_MEM_TO_MEM_FAILED} else {out_buf_len};
+    (flags & !TINFL_FLAG_HAS_MORE_INPUT) | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF
+  )};
+  if status != TINFL_STATUS_DONE {TINFL_DECOMPRESS_MEM_TO_MEM_FAILED} else {out_buf_len}
 }
 
 // tinfl_decompress_mem_to_callback() decompresses a block in memory to an internal 32KB buffer, and a user provided callback function will be called to flush the buffer.
 // Returns 1 on success or 0 on failure.
 pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func:&mut tinfl_put_buf_func_ptr, pPut_buf_user: *const c_void, flags: DecompressionFlags) -> (bool, uint)
 {
-  let dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
-  let in_buf_ofs: uint = 0;
-  let dict_ofs: uint = 0;
-  let result: bool = false;
   let mut decomp = tinfl_decompressor::new();
+  let mut dict: Vec<u8> = Vec::from_elem(TINFL_LZ_DICT_SIZE, 0u8);
+  let mut in_buf_ofs: uint = 0;
+  let mut dict_ofs: uint = 0;
+  let mut result: bool = false;
   loop {
-    let in_buf_size: uint = in_buf.len() - in_buf_ofs;
-    let dst_buf_size: uint = TINFL_LZ_DICT_SIZE - dict_ofs;
-    let status: tinfl_status = tinfl_decompress(
+    let mut in_buf_size: uint = in_buf.len() - in_buf_ofs;
+    let mut dst_buf_size: uint = TINFL_LZ_DICT_SIZE - dict_ofs;
+    let status: tinfl_status = unsafe{tinfl_decompress(
       &mut decomp,
       in_buf[in_buf_ofs..].as_ptr(),
       &mut in_buf_size,
-      dict[].as_ptr(),
-      dict[dict_ofs..].as_ptr(),
+      dict[mut].as_mut_ptr(),
+      dict[mut dict_ofs..].as_mut_ptr(),
       &mut dst_buf_size,
-      (flags & !(TINFL_FLAG_HAS_MORE_INPUT | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF)));
+      (flags & !(TINFL_FLAG_HAS_MORE_INPUT | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF))
+    )};
 
     // Increase input buffer to reflect data copied out.
     in_buf_ofs += in_buf_size;
