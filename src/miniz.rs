@@ -48,7 +48,7 @@
      #define MINIZ_HAS_64BIT_REGISTERS 1
 */
 
-#![feature(macro_rules, slicing_syntax, globs, unboxed_closures)]
+#![feature(macro_rules, slicing_syntax, globs, unboxed_closures, if_let, asm)]
 #![crate_type = "lib"]
 
 extern crate libc;
@@ -109,10 +109,10 @@ const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
 pub type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
 
-// Max size of LZ dictionary.
+/// Max size of LZ dictionary.
 const TINFL_LZ_DICT_SIZE: uint = 32768;
 
-// Return status.
+/// Return status.
 #[repr(i8)]
 #[deriving(PartialEq)]
 enum tinfl_status
@@ -126,9 +126,9 @@ enum tinfl_status
 }
 
 // Initializes the decompressor to its initial state.
-fn tinfl_init(r: &mut tinfl_decompressor) {
+/*fn tinfl_init(r: &mut tinfl_decompressor) {
   r.m_state = 0;
-}
+}*/
 fn tinfl_get_adler32(r: &tinfl_decompressor) -> u32 {
   r.m_check_adler32
 }
@@ -225,7 +225,7 @@ bitflags! {
   }
 }
 
-// Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
+/// Output stream interface. The compressor uses this interface to write compressed data. It'll typically be called TDEFL_OUT_BUF_SIZE at a time.
 type tdefl_put_buf_func_ptr<'a> = &'a FnMut<(*const u8, uint), bool> + 'a;
 
 const TDEFL_MAX_HUFF_TABLES: uint = 3;
