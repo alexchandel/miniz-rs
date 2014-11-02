@@ -107,7 +107,7 @@ bitflags! {
 
 const TINFL_DECOMPRESS_MEM_TO_MEM_FAILED: uint = -1;
 
-type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
+pub type tinfl_put_buf_func_ptr<'a> = FnMut<(&'a [u8],), bool> + 'a;
 
 type tinfl_decompressor = tinfl_decompressor_tag;
 
