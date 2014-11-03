@@ -54,9 +54,10 @@
 
 extern crate libc;
 
-use libc::{c_int};
+use libc::{c_int, c_uint};
 use std::ptr::{copy_memory, null};
 use std::slice::raw::buf_as_slice;
+use std::str::StrSlice;
 use std::cmp::{max, min};
 use memory_specific_constants::*;
 
@@ -86,9 +87,10 @@ enum CompressionStrategies { MZ_DEFAULT_STRATEGY = 0, MZ_FILTERED = 1, MZ_HUFFMA
 // Method
 const MZ_DEFLATED: int = 8;
 
-// ------------------- Types and macros
-
-type mz_uint = libc::c_uint;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: uint = 1;
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: uint = 0;
 
 // ------------------- Low-level Decompression API Definitions
 
@@ -166,8 +168,8 @@ impl tinfl_huff_table {
 
 struct tinfl_decompressor
 {
-  m_state: u32, m_num_bits: uint, m_zhdr0: u32, m_zhdr1: u32, m_z_adler32: u32, m_final: u32, m_type: u32,
-  m_check_adler32: u32, m_dist: u32, m_counter: uint, m_num_extra: u32, m_table_sizes: [u32, ..TINFL_MAX_HUFF_TABLES],
+  m_state: u32, m_num_bits: uint, m_zhdr0: u32, m_zhdr1: u32, m_z_adler32: u32, m_final: u32, m_type: uint,
+  m_check_adler32: u32, m_dist: uint, m_counter: uint, m_num_extra: uint, m_table_sizes: [uint, ..TINFL_MAX_HUFF_TABLES],
   m_bit_buf: tinfl_bit_buf_t,
   m_dist_from_out_buf_start: uint,
   m_tables: [tinfl_huff_table, ..TINFL_MAX_HUFF_TABLES],
@@ -178,8 +180,8 @@ impl tinfl_decompressor {
   /// Initializes the decompressor to its initial state.
   fn new() -> tinfl_decompressor {
     tinfl_decompressor {
-      m_state: 0u32, m_num_bits: 0u, m_zhdr0: 0u32, m_zhdr1: 0u32, m_z_adler32: 0u32, m_final: 0u32, m_type: 0u32,
-      m_check_adler32: 0u32, m_dist: 0u32, m_counter: 0u, m_num_extra: 0u32, m_table_sizes: [0u32, ..TINFL_MAX_HUFF_TABLES],
+      m_state: 0u32, m_num_bits: 0u, m_zhdr0: 0u32, m_zhdr1: 0u32, m_z_adler32: 0u32, m_final: 0u32, m_type: 0u,
+      m_check_adler32: 0u32, m_dist: 0u, m_counter: 0u, m_num_extra: 0u, m_table_sizes: [0u, ..TINFL_MAX_HUFF_TABLES],
       m_bit_buf: 0,
       m_dist_from_out_buf_start: 0u,
       m_tables: [tinfl_huff_table::new(), ..TINFL_MAX_HUFF_TABLES],
@@ -355,9 +357,6 @@ fn mz_crc32(crc: u32, buf: Option<&[u8]>) -> u32
 
 // ------------------- Low-level Decompression (completely independent from all compression API's)
 
-// macro_rules! TINFL_MEMCPY(($d:expr, $s:expr, $l:expr) => (memcpy(d, s, l););)
-// macro_rules! TINFL_MEMSET(($p:expr, $c:expr, $l:expr) => (memset(p, c, l););)
-
 // #define TINFL_CR_BEGIN switch(r->m_state) { case 0:
 // #define TINFL_CR_FINISH }
 
@@ -365,22 +364,29 @@ fn mz_crc32(crc: u32, buf: Option<&[u8]>) -> u32
 /// This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output.
 unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, pIn_buf_size: &mut uint, pOut_buf_start: *mut u8, pOut_buf_next: *mut u8, pOut_buf_size: &mut uint, decomp_flags: DecompressionFlags) -> tinfl_status
 {
-  let s_length_base: [int, ..31] = [ 3,4,5,6,7,8,9,10,11,13, 15,17,19,23,27,31,35,43,51,59, 67,83,99,115,131,163,195,227,258,0,0 ];
+  let s_length_base: [uint, ..31] = [ 3,4,5,6,7,8,9,10,11,13, 15,17,19,23,27,31,35,43,51,59, 67,83,99,115,131,163,195,227,258,0,0 ];
   let s_length_extra: [int, ..31]= [ 0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0 ];
   let s_dist_base: [int, ..32] = [ 1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193, 257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577,0,0];
   let s_dist_extra: [int, ..32] = [ 0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13, 0xFFFF, 0xFFFF ]; // WARNING miniz.c HAD WRONG INITIALIZER
-  let s_length_dezigzag: [u8, ..19] = [ 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 ];
-  let s_min_table_sizes: [int, ..3] = [ 257, 1, 4 ];
+  let s_length_dezigzag: [uint, ..19] = [ 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 ];
+  let s_min_table_sizes: [uint, ..3] = [ 257, 1, 4 ];
 
-  let mut status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: uint; let dist: u32; let counter: uint; let num_extra: u32; let bit_buf: tinfl_bit_buf_t;
+  let mut status: tinfl_status = TINFL_STATUS_FAILED; let num_bits: uint; let dist: uint; let counter: uint; let num_extra: uint; let bit_buf: tinfl_bit_buf_t;
   let pIn_buf_cur: *const u8 = pIn_buf_next; let pIn_buf_end: *const u8 = pIn_buf_next.offset(*pIn_buf_size as int);
   let pOut_buf_cur: *mut u8 = pOut_buf_next; let pOut_buf_end:  *mut u8 = pOut_buf_next.offset(*pOut_buf_size as int);
   let out_buf_size_mask: uint = if decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {-1 as uint} else {((pOut_buf_next as uint - pOut_buf_start as uint) + *pOut_buf_size) - 1};
   let dist_from_out_buf_start: uint;
 
+  macro_rules! TINFL_CR_BEGIN(
+    ($i: expr) => ({
+      if r.m_state == $i {
+        asm!(concat!("jmp ", " case_", stringify!($i)) ::::"volatile");
+      }
+    });
+  )
+
   macro_rules! TINFL_CR_RETURN(
-    ($state_index: expr, $result: expr) => (
-      {
+    ($state_index: expr, $result: expr) => ({
         status = $result;
         r.m_state = $state_index;
         asm!("jmp common_exit" :::: "volatile");
@@ -395,11 +401,11 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
   macro_rules! TINFL_GET_BYTE( ($state_index:expr, $c:expr) => (loop {
     if (pIn_buf_cur >= pIn_buf_end) {
       loop {
-        if (decomp_flags & TINFL_FLAG_HAS_MORE_INPUT) {
+        if decomp_flags.contains(TINFL_FLAG_HAS_MORE_INPUT) {
           TINFL_CR_RETURN!($state_index, TINFL_STATUS_NEEDS_MORE_INPUT);
           if (pIn_buf_cur < pIn_buf_end) {
             $c = *pIn_buf_cur;
-            pIn_buf_cur += 1;
+            pIn_buf_cur = pIn_buf_cur.offset(1);
             break;
           }
         } else {
@@ -407,14 +413,18 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
           break;
         }
       }
-    } else {$c = *pIn_buf_cur; pIn_buf_cur += 1;} break; }; );
+    } else {$c = *pIn_buf_cur; pIn_buf_cur = pIn_buf_cur.offset(1);} break; }; );
   )
 
-  macro_rules! TINFL_NEED_BITS( ($state_index:expr, $n:expr) => (loop { let c: uint; TINFL_GET_BYTE!($state_index, c); bit_buf |= ((c as tinfl_bit_buf_t) << num_bits); num_bits += 8; if !(num_bits < ($n) as uint) {break;} }); )
-  macro_rules! TINFL_SKIP_BITS( ($state_index:expr, $n:expr) => ({ if (num_bits < ($n) as uint) { TINFL_NEED_BITS!($state_index, $n); } bit_buf >>= ($n); num_bits -= ($n); }); )
+  macro_rules! TINFL_NEED_BITS( ($state_index:expr, $n:expr) => (loop { let c: uint; TINFL_GET_BYTE!($state_index, c); bit_buf |= ((c as tinfl_bit_buf_t) << num_bits); num_bits += 8; if !(num_bits < ($n)) {break;} }); )
+  macro_rules! TINFL_SKIP_BITS( ($state_index:expr, $n:expr) => ({ if (num_bits < ($n)) { TINFL_NEED_BITS!($state_index, $n); } bit_buf >>= ($n); num_bits -= ($n); }); )
   macro_rules! TINFL_GET_BITS( ($state_index:expr, $b:expr, $n:expr) => (
-    { if num_bits < ($n)as uint { TINFL_NEED_BITS!($state_index, $n); } $b = bit_buf & ((1 << ($n)) - 1); bit_buf >>= ($n); num_bits -= ($n); });
+    { if num_bits < ($n) { TINFL_NEED_BITS!($state_index, $n); } $b = bit_buf & ((1 << ($n)) - 1); bit_buf >>= ($n); num_bits -= ($n); });
   )
+
+  let mut huff_decode_temp: c_int;
+  let mut huff_decode_code_len: uint;
+  let mut huff_decode_c: uint;
 
   // TINFL_HUFF_BITBUF_FILL() is only used rarely, when the number of bytes remaining in the input buffer falls below 2.
   // It reads just enough bytes from the input stream that are needed to decode the next Huffman code (and absolutely no more). It works by trying to fully decode a
@@ -423,20 +433,20 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
   macro_rules! TINFL_HUFF_BITBUF_FILL( (
     $state_index:expr, $pHuff:expr) => (
     loop {
-      temp = ($pHuff).m_look_up[bit_buf & (TINFL_FAST_LOOKUP_SIZE - 1)];
-      if (temp >= 0) {
-        code_len = temp >> 9;
-        if ((code_len) && (num_bits >= code_len)){
+      huff_decode_temp = ($pHuff).m_look_up[bit_buf as uint & (TINFL_FAST_LOOKUP_SIZE - 1)];
+      if (huff_decode_temp >= 0) {
+        huff_decode_code_len = huff_decode_temp >> 9;
+        if (huff_decode_code_len > 0) && (num_bits >= huff_decode_code_len) {
           break;
         }
       } else if (num_bits > TINFL_FAST_LOOKUP_BITS) {
-         code_len = TINFL_FAST_LOOKUP_BITS;
+         huff_decode_code_len = TINFL_FAST_LOOKUP_BITS;
          loop {
-            temp = ($pHuff).m_tree[!temp + ((bit_buf >> {let t = code_len; code_len+=1; t}) & 1)];
-            if !((temp < 0) && (num_bits >= (code_len + 1))) {break;}
+            huff_decode_temp = ($pHuff).m_tree[!huff_decode_temp + ((bit_buf >> {let t = huff_decode_code_len; huff_decode_code_len+=1; t}) & 1)];
+            if !((huff_decode_temp < 0) && (num_bits >= (huff_decode_code_len + 1))) {break;}
          };
-         if temp >= 0 {break;}
-      } TINFL_GET_BYTE!($state_index, c); bit_buf |= ((c as tinfl_bit_buf_t) << num_bits); num_bits += 8;
+         if huff_decode_temp >= 0 {break;}
+      } TINFL_GET_BYTE!($state_index, huff_decode_c); bit_buf |= ((huff_decode_c as tinfl_bit_buf_t) << num_bits); num_bits += 8;
       if !(num_bits < 15) {break;};
     });
   )
@@ -446,20 +456,26 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
   // decode the next Huffman code.) Handling this properly is particularly important on raw deflate (non-zlib) streams, which aren't followed by a byte aligned adler-32.
   // The slow path is only executed at the very end of the input buffer.
   macro_rules! TINFL_HUFF_DECODE( ($state_index:expr, $sym:expr, $pHuff:expr) => (loop {
-    let temp: c_int; let code_len: uint; let c: uint;
+    // let mut huff_decode_temp: c_int; let mut huff_decode_code_len: uint; let mut huff_decode_c: uint;
     if (num_bits < 15) {
-      if ((pIn_buf_end - pIn_buf_cur) < 2) {
+      if ((pIn_buf_end as uint - pIn_buf_cur as uint) < 2) {
          TINFL_HUFF_BITBUF_FILL!($state_index, $pHuff);
       } else {
-         bit_buf |= ((pIn_buf_cur[0] as tinfl_bit_buf_t) << num_bits) | ((pIn_buf_cur[1] as tinfl_bit_buf_t) << (num_bits + 8)); pIn_buf_cur += 2; num_bits += 16;
+         bit_buf |= ((*pIn_buf_cur as tinfl_bit_buf_t) << num_bits) | (( *pIn_buf_cur.offset(1) as tinfl_bit_buf_t) << (num_bits + 8));
+         pIn_buf_cur = pIn_buf_cur.offset(2);
+         num_bits += 16;
       }
     }
-    if ((temp = ($pHuff).m_look_up[bit_buf & (TINFL_FAST_LOOKUP_SIZE - 1)]) >= 0){
-      code_len = temp >> 9; temp &= 511;
+    huff_decode_temp = ($pHuff).m_look_up[bit_buf as uint & (TINFL_FAST_LOOKUP_SIZE - 1)];
+    if huff_decode_temp >= 0 {
+      huff_decode_code_len = huff_decode_temp >> 9; huff_decode_temp &= 511;
     } else {
-      code_len = TINFL_FAST_LOOKUP_BITS;
-      loop { temp = ($pHuff).m_tree[!temp + ((bit_buf >> {let t = code_len; code_len+=1; t}) & 1)]; if !(temp < 0) {break;} }
-    } $sym = temp; bit_buf >>= code_len; num_bits -= code_len; break;}; );
+      huff_decode_code_len = TINFL_FAST_LOOKUP_BITS;
+      loop {
+        huff_decode_temp = ($pHuff).m_tree[!huff_decode_temp + ((bit_buf >> {let t = huff_decode_code_len; huff_decode_code_len+=1; t}) & 1)];
+        if !(huff_decode_temp < 0) {break;}
+      }
+    } $sym = huff_decode_temp; bit_buf >>= huff_decode_code_len; num_bits -= huff_decode_code_len; break;}; );
   )
 
   // Ensure the output buffer's size is a power of 2, unless the output buffer is large enough to hold the entire output file (in which case it doesn't matter).
@@ -470,13 +486,23 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
   {
     /*
     asm!("case_0:"::::"volatile");
-    bit_buf = num_bits = dist = counter = num_extra = r.m_zhdr0 = r.m_zhdr1 = 0; r.m_z_adler32 = r.m_check_adler32 = 1;
-    if (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER)
+    bit_buf = 0;
+    num_bits = 0;
+    dist = 0;
+    counter = 0;
+    num_extra = 0;
+    r.m_zhdr0 = 0;
+    r.m_zhdr1 = 0;
+    r.m_z_adler32 = 1;
+    r.m_check_adler32 = 1;
+    if decomp_flags.contains(TINFL_FLAG_PARSE_ZLIB_HEADER)
     {
       TINFL_GET_BYTE!(1, r.m_zhdr0); TINFL_GET_BYTE!(2, r.m_zhdr1);
-      counter = (((r.m_zhdr0 * 256 + r.m_zhdr1) % 31 != 0) || (r.m_zhdr1 & 32) || ((r.m_zhdr0 & 15) != 8));
-      if (!(decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF)) {counter |= (((1u << (8u + (r.m_zhdr0 >> 4))) > 32768u) || ((out_buf_size_mask + 1) < (1u << (8u + (r.m_zhdr0 >> 4)))))};
-      if (counter) { TINFL_CR_RETURN_FOREVER!(36, TINFL_STATUS_FAILED); }
+      counter = (((r.m_zhdr0 * 256 + r.m_zhdr1) % 31 != 0) || (r.m_zhdr1 & 32 != 0) || ((r.m_zhdr0 & 15) != 8)) as uint;
+      if !decomp_flags.contains(TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) {
+        counter |= (((1u << (8u + (r.m_zhdr0 >> 4) as uint)) > 32768u) || ((out_buf_size_mask + 1) < (1u << (8u + (r.m_zhdr0 >> 4) as uint)))) as uint
+      };
+      if counter > 0 { TINFL_CR_RETURN_FOREVER!(36, TINFL_STATUS_FAILED); }
     }
     loop
     {
@@ -485,22 +511,24 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
       {
         TINFL_SKIP_BITS!(5, num_bits & 7);
         counter = 0;
-        while counter < 4 { if (num_bits) {TINFL_GET_BITS!(6, r.m_raw_header[counter], 8);} else {TINFL_GET_BYTE!(7, r.m_raw_header[counter]);}; counter+=1}
-        if ((counter = (r.m_raw_header[0] | (r.m_raw_header[1] << 8))) != (0xFFFF ^ (r.m_raw_header[2] | (r.m_raw_header[3] << 8))) as uint) { TINFL_CR_RETURN_FOREVER!(39, TINFL_STATUS_FAILED); }
-        while ((counter) && (num_bits))
+        while counter < 4 { if num_bits > 0 {TINFL_GET_BITS!(6, r.m_raw_header[counter], 8);} else {TINFL_GET_BYTE!(7, r.m_raw_header[counter]);}; counter+=1}
+
+        counter = r.m_raw_header[0] as uint | (r.m_raw_header[1] as uint << 8);
+        if (counter != (0xFFFF ^ (r.m_raw_header[2] | (r.m_raw_header[3] << 8))) as uint) { TINFL_CR_RETURN_FOREVER!(39, TINFL_STATUS_FAILED); }
+        while (counter > 0) && (num_bits > 0)
         {
           TINFL_GET_BITS!(51, dist, 8);
           while (pOut_buf_cur >= pOut_buf_end) { TINFL_CR_RETURN!(52, TINFL_STATUS_HAS_MORE_OUTPUT); }
-          *pOut_buf_cur = dist as u8; pOut_buf_cur+=1;
+          *pOut_buf_cur = dist as u8; pOut_buf_cur = pOut_buf_cur.offset(1);
           counter-=1;
         }
-        while (counter)
+        while counter>0
         {
           let n: uint;
           while (pOut_buf_cur >= pOut_buf_end) { TINFL_CR_RETURN!(9, TINFL_STATUS_HAS_MORE_OUTPUT); }
           while (pIn_buf_cur >= pIn_buf_end)
           {
-            if (decomp_flags & TINFL_FLAG_HAS_MORE_INPUT)
+            if decomp_flags.contains(TINFL_FLAG_HAS_MORE_INPUT)
             {
               TINFL_CR_RETURN!(38, TINFL_STATUS_NEEDS_MORE_INPUT);
             }
@@ -510,7 +538,10 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
             }
           }
           n = min(min(pOut_buf_end as uint - pOut_buf_cur as uint, pIn_buf_end as uint - pIn_buf_cur as uint), counter);
-          copy_memory(pOut_buf_cur, pIn_buf_cur, n); pIn_buf_cur += n; pOut_buf_cur += n; counter -= n;
+          copy_memory(pOut_buf_cur, pIn_buf_cur, n);
+          pIn_buf_cur = pIn_buf_cur.offset(n as int);
+          pOut_buf_cur = pOut_buf_cur.offset(n as int);
+          counter -= n;
         }
       }
       else if (r.m_type == 3)
@@ -521,43 +552,50 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
       {
         if (r.m_type == 1)
         {
-          let p: *mut u8 = r.m_tables[0].m_code_size; let i: uint;
-          r.m_table_sizes[0] = 288; r.m_table_sizes[1] = 32; set_memory(r.m_tables[1].m_code_size, 5, 32);
+          let mut p: *mut u8 = r.m_tables[0].m_code_size.as_mut_ptr(); let i: uint;
+          r.m_table_sizes[0] = 288; r.m_table_sizes[1] = 32; for i in r.m_tables[1].m_code_size[mut 0..32].iter_mut() {*i = 5;}
           i = 0;
-          while i <= 143 {*p = 8; p+=1; i+=1;}
-          while i <= 255 {*p = 9; p+=1; i+=1;}
-          while i <= 279 {*p = 7; p+=1; i+=1;}
-          while i <= 287 {*p = 8; p+=1; i+=1;}
+          while i <= 143 {*p = 8; p = p.offset(1); i+=1;}
+          while i <= 255 {*p = 9; p = p.offset(1); i+=1;}
+          while i <= 279 {*p = 7; p = p.offset(1); i+=1;}
+          while i <= 287 {*p = 8; p = p.offset(1); i+=1;}
         }
         else
         {
           counter = 0;
-          while counter < 3 { TINFL_GET_BITS!(11, r.m_table_sizes[counter], "\05\05\04"[counter]); r.m_table_sizes[counter] += s_min_table_sizes[counter]; counter+=1; }
-          MZ_CLEAR_OBJ(r.m_tables[2].m_code_size); counter = 0; while counter < r.m_table_sizes[2] { let s: uint; TINFL_GET_BITS!(14, s, 3); r.m_tables[2].m_code_size[s_length_dezigzag[counter]] = s as u8; counter+=1; }
+          while counter < 3 { TINFL_GET_BITS!(11, r.m_table_sizes[counter], [5,5,4][counter]); r.m_table_sizes[counter] += s_min_table_sizes[counter]; counter+=1; }
+          for i in r.m_tables[2].m_code_size.iter_mut() {*i = 0;};
+          counter = 0; while counter < r.m_table_sizes[2] { let s: uint; TINFL_GET_BITS!(14, s, 3); r.m_tables[2].m_code_size[s_length_dezigzag[counter]] = s as u8; counter+=1; }
           r.m_table_sizes[2] = 19;
         }
         while r.m_type as int >= 0
         {
-          let tree_next: int; let tree_cur: int; let pTable: *mut tinfl_huff_table;
-          let i: mz_uint; let j: mz_uint; let used_syms: mz_uint; let total: mz_uint; let sym_index: mz_uint;
-          let next_code: [mz_uint, ..17]; let total_syms: [mz_uint, ..16]; pTable = &r.m_tables[r.m_type]; MZ_CLEAR_OBJ(total_syms); MZ_CLEAR_OBJ(pTable.m_look_up); MZ_CLEAR_OBJ(pTable.m_tree);
+          let i: uint; let j: uint;
+          let next_code = [0u, ..17]; let total_syms = [0u, ..16];
+          let pTable: &mut tinfl_huff_table = &r.m_tables[r.m_type]; for i in pTable.m_look_up.iter_mut() {*i=0;}; for i in pTable.m_tree.iter_mut() {*i=0;};
           i = 0;
-          while i < r.m_table_sizes[r.m_type] {total_syms[pTable.m_code_size[i]] += 1; i += 1;}
-          used_syms = 0; total = 0; next_code[0] = next_code[1] = 0;
+          while i < r.m_table_sizes[r.m_type] {total_syms[pTable.m_code_size[i] as uint] += 1; i += 1;}
+          let used_syms: uint = 0; let total: uint = 0; next_code[0] = 0; next_code[1] = 0;
           i = 1;
-          while i <= 15 { used_syms += total_syms[i]; next_code[i + 1] = (total = ((total + total_syms[i]) << 1)); i += 1; }
+          while i <= 15 {
+            used_syms += total_syms[i];
+            total = ((total + total_syms[i]) << 1);
+            next_code[i + 1] = total;
+            i += 1;
+          }
           if ((65536 != total) && (used_syms > 1))
           {
             TINFL_CR_RETURN_FOREVER!(35, TINFL_STATUS_FAILED);
           }
-          tree_next = -1; sym_index = 0;
+          let tree_next: int = -1; let tree_cur: int; let sym_index: uint = 0;
           while sym_index < r.m_table_sizes[r.m_type]
           {
-            let rev_code: mz_uint = 0;
-            let l: mz_uint;
-            let cur_code: mz_uint;
-            let code_size: mz_uint = pTable.m_code_size[sym_index]; if !code_size {continue;}
-            cur_code = next_code[code_size]+=1;
+            let rev_code: uint = 0;
+            let l: uint;
+            let cur_code: uint;
+            let code_size: uint = pTable.m_code_size[sym_index] as uint; if code_size==0 {continue;}
+            next_code[code_size]+=1;
+            cur_code = next_code[code_size];
             l = code_size; while l > 0 {rev_code = (rev_code << 1) | (cur_code & 1); l-=1; cur_code >>= 1;}
             if (code_size <= TINFL_FAST_LOOKUP_BITS) {
               let k: i16 = ((code_size << 9) | sym_index) as i16;
@@ -573,11 +611,12 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
             j = code_size;
             while j > (TINFL_FAST_LOOKUP_BITS + 1)
             {
-              tree_cur -= ((rev_code >>= 1) & 1);
-              if (!pTable.m_tree[-tree_cur - 1]) { pTable.m_tree[-tree_cur - 1] = tree_next as i16; tree_cur = tree_next; tree_next -= 2; } else {tree_cur = pTable.m_tree[-tree_cur - 1];}
+              rev_code >>= 1;
+              tree_cur -= rev_code & 1;
+              if (!pTable.m_tree[-tree_cur - 1]) { pTable.m_tree[(-tree_cur - 1) as uint] = tree_next as i16; tree_cur = tree_next; tree_next -= 2; } else {tree_cur = pTable.m_tree[-tree_cur - 1];}
               j -= 1;
             }
-            tree_cur -= ((rev_code >>= 1) & 1); pTable.m_tree[-tree_cur - 1] = sym_index as i16;
+            tree_cur -= ((rev_code >>= 1) & 1); pTable.m_tree[(-tree_cur - 1) as uint] = sym_index as i16;
             sym_index += 1;
           }
           if (r.m_type == 2)
@@ -585,20 +624,23 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
             counter = 0;
             while counter < (r.m_table_sizes[0] + r.m_table_sizes[1])
             {
-              let s: mz_uint;
+              let s: c_uint;
               TINFL_HUFF_DECODE!(16, dist, &r.m_tables[2]); if (dist < 16) { r.m_len_codes[counter] = dist as u8; counter+=1; continue; }
-              if ((dist == 16) && (!counter))
+              if (dist == 16) && (counter == 0)
               {
                 TINFL_CR_RETURN_FOREVER!(17, TINFL_STATUS_FAILED);
               }
-              num_extra = "\02\03\07"[dist - 16]; TINFL_GET_BITS!(18, s, num_extra); s += "\03\03\013"[dist - 16];
-              set_memory(r.m_len_codes + counter, if dist == 16 {r.m_len_codes[counter - 1]} else {0}, s); counter += s;
+              num_extra = [2,3,7][dist - 16]; TINFL_GET_BITS!(18, s, num_extra); s += [3,3,13][dist - 16];
+              for i in r.m_len_codes[mut counter..counter+s].iter_mut() {*i = if dist == 16 {r.m_len_codes[counter - 1]} else {0};}
+              // set_memory(r.m_len_codes + counter, if dist == 16 {r.m_len_codes[counter - 1]} else {0}, s);
+              counter += s;
             }
             if ((r.m_table_sizes[0] + r.m_table_sizes[1]) != counter)
             {
               TINFL_CR_RETURN_FOREVER!(21, TINFL_STATUS_FAILED);
             }
-            copy_memory(r.m_tables[0].m_code_size, r.m_len_codes, r.m_table_sizes[0]); copy_memory(r.m_tables[1].m_code_size, r.m_len_codes + r.m_table_sizes[0], r.m_table_sizes[1]);
+            copy_memory(r.m_tables[0].m_code_size.as_mut_ptr(), r.m_len_codes.as_ptr(), r.m_table_sizes[0]);
+            copy_memory(r.m_tables[1].m_code_size.as_mut_ptr(), r.m_len_codes.as_ptr().offset(r.m_table_sizes[0]), r.m_table_sizes[1]);
           }
           r.m_type-=1;
         }
@@ -619,56 +661,58 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
             }
             else
             {
-              let sym2: c_int; let code_len: mz_uint;
+              let sym2: uint; let code_len: uint;
 
-              #[cfg(target_word_size = "64")]
-              fn todo_name_me() {if (num_bits < 30) { bit_buf |= ((MZ_READ_LE32!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur += 4; num_bits += 32; }}
-              #[cfg(not(target_word_size = "64"))]
-              fn todo_name_me() {if (num_bits < 15) { bit_buf |= ((MZ_READ_LE16!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur += 2; num_bits += 16; }}
-              todo_name_me();
+              match TINFL_BITBUF_SIZE {
+                32 => {if (num_bits < 15) { bit_buf |= ((MZ_READ_LE16!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur = pIn_buf_cur.offset(2); num_bits += 16; }},
+                64 => {if (num_bits < 30) { bit_buf |= ((MZ_READ_LE32!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur = pIn_buf_cur.offset(4); num_bits += 32; }},
+                _ => panic!(), // 32 is probably OK for 16-bit too
+              }
 
-              if ((sym2 = r.m_tables[0].m_look_up[bit_buf & (TINFL_FAST_LOOKUP_SIZE - 1)]) >= 0){
+              sym2 = r.m_tables[0].m_look_up[bit_buf as uint & (TINFL_FAST_LOOKUP_SIZE - 1)];
+              if sym2 >= 0 {
                 code_len = sym2 >> 9;
               } else {
                 code_len = TINFL_FAST_LOOKUP_BITS; loop { sym2 = r.m_tables[0].m_tree[!sym2 + ((bit_buf >> code_len) & 1)]; code_len += 1; if !(sym2 < 0) {break;} };
               }
               counter = sym2; bit_buf >>= code_len; num_bits -= code_len;
-              if (counter & 256){
+              if counter & 256 > 0{
                 break;
               }
 
-              #[cfg(target_word_size = "64")]
-              fn todo_name_me2() {if (num_bits < 15) { bit_buf |= ((MZ_READ_LE16!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur += 2; num_bits += 16; }}
-              #[cfg(not(target_word_size = "64"))]
-              fn todo_name_me2() {}
-              todo_name_me2();
+              match TINFL_BITBUF_SIZE {
+                32 => {},
+                64 => {if (num_bits < 15) { bit_buf |= ((MZ_READ_LE16!(pIn_buf_cur) as tinfl_bit_buf_t) << num_bits); pIn_buf_cur = pIn_buf_cur.offset(2); num_bits += 16; }},
+                _ => panic!(), // 32 is probably OK for 16-bit too
+              }
 
-              if ((sym2 = r.m_tables[0].m_look_up[bit_buf & (TINFL_FAST_LOOKUP_SIZE - 1)]) >= 0){
+              sym2 = r.m_tables[0].m_look_up[bit_buf as uint & (TINFL_FAST_LOOKUP_SIZE - 1)];
+              if sym2 >= 0 {
                 code_len = sym2 >> 9;
               } else {
                 code_len = TINFL_FAST_LOOKUP_BITS; loop { sym2 = r.m_tables[0].m_tree[!sym2 + ((bit_buf >> code_len) & 1)]; code_len += 1; if !(sym2 < 0) {break;} };
               }
               bit_buf >>= code_len; num_bits -= code_len;
 
-              pOut_buf_cur[0] = counter as u8;
+              *pOut_buf_cur = counter as u8;
               if (sym2 & 256)
               {
-                pOut_buf_cur+=1;
+                pOut_buf_cur = pOut_buf_cur.offset(1);
                 counter = sym2;
                 break;
               }
-              pOut_buf_cur[1] = sym2 as u8;
-              pOut_buf_cur += 2;
+              *pOut_buf_cur.offset(1) = sym2 as u8;
+              pOut_buf_cur = pOut_buf_cur.offset(2);
             }
           }
           if ((counter &= 511) == 256) {break;}
 
           num_extra = s_length_extra[counter - 257]; counter = s_length_base[counter - 257];
-          if num_extra { let extra_bits: mz_uint; TINFL_GET_BITS!(25, extra_bits, num_extra); counter += extra_bits; }
+          if num_extra { let extra_bits: c_uint; TINFL_GET_BITS!(25, extra_bits, num_extra); counter += extra_bits; }
 
           TINFL_HUFF_DECODE!(26, dist, &r.m_tables[1]);
           num_extra = s_dist_extra[dist]; dist = s_dist_base[dist];
-          if num_extra { let extra_bits: mz_uint; TINFL_GET_BITS!(27, extra_bits, num_extra); dist += extra_bits; }
+          if num_extra { let extra_bits: c_uint; TINFL_GET_BITS!(27, extra_bits, num_extra); dist += extra_bits; }
 
           dist_from_out_buf_start = pOut_buf_cur - pOut_buf_start;
           if ((dist > dist_from_out_buf_start) && (decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF))
@@ -678,9 +722,9 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
 
           pSrc = pOut_buf_start + ((dist_from_out_buf_start - dist) & out_buf_size_mask);
 
-          if ((max(pOut_buf_cur, pSrc) + counter) > pOut_buf_end)
+          if (max(pOut_buf_cur as uint, pSrc as uint) + counter) > pOut_buf_end as uint
           {
-            while {let temp = counter; counter-=1; temp}
+            while {let _temp = counter; counter-=1; _temp}
             {
               while (pOut_buf_cur >= pOut_buf_end) { TINFL_CR_RETURN!(53, TINFL_STATUS_HAS_MORE_OUTPUT); }
               *pOut_buf_cur = pOut_buf_start[(dist_from_out_buf_start - dist) & out_buf_size_mask];
@@ -691,39 +735,38 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
           }
           else if ((counter >= 9) && (counter <= dist))
           {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fn todo_name_me3() {
-              let pSrc_end: *const u8 = pSrc + (counter & !7);
-              loop
-              {
-                (pOut_buf_cur as *mut u32)[0] = (pSrc as *const u32)[0];
-                (pOut_buf_cur as *mut u32)[1] = (pSrc as *const u32)[1];
-                pOut_buf_cur += 8;
-                if !((pSrc += 8) < pSrc_end) {break;}
-              }
-              if ((counter &= 7) < 3)
-              {
-                if (counter)
+            match MINIZ_USE_UNALIGNED_LOADS_AND_STORES {
+              1 => {
+                let pSrc_end: *const u8 = pSrc + (counter & !7);
+                loop
                 {
-                  pOut_buf_cur[0] = pSrc[0];
-                  if (counter > 1){
-                    pOut_buf_cur[1] = pSrc[1];
-                  }
-                  pOut_buf_cur += counter;
+                  (pOut_buf_cur as *mut u32)[0] = (pSrc as *const u32)[0];
+                  (pOut_buf_cur as *mut u32)[1] = (pSrc as *const u32)[1];
+                  pOut_buf_cur += 8;
+                  if !((pSrc += 8) < pSrc_end) {break;}
                 }
-                continue;
-              }
+                if ((counter &= 7) < 3)
+                {
+                  if (counter)
+                  {
+                    pOut_buf_cur[0] = pSrc[0];
+                    if (counter > 1){
+                      pOut_buf_cur[1] = pSrc[1];
+                    }
+                    pOut_buf_cur += counter;
+                  }
+                  continue;
+                }
+              },
+              0 => {}
             }
-            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-            fn todo_name_me3() {}
-            todo_name_me3()
           }
           loop
           {
-            pOut_buf_cur[0] = pSrc[0];
-            pOut_buf_cur[1] = pSrc[1];
-            pOut_buf_cur[2] = pSrc[2];
-            pOut_buf_cur += 3; pSrc += 3;
+            *pOut_buf_cur.offset(0) = *pSrc.offset(0);
+            *pOut_buf_cur.offset(1) = *pSrc.offset(1);
+            *pOut_buf_cur.offset(2) = *pSrc.offset(2);
+            pOut_buf_cur = pOut_buf_cur.offset(3); pSrc = pSrc.offset();
             if !((counter -= 3) as int > 2) {break;}
           }
           if (counter as int > 0)
@@ -732,17 +775,24 @@ unsafe fn tinfl_decompress(r: &mut tinfl_decompressor, pIn_buf_next: *const u8, 
             if (counter as int > 1){
               pOut_buf_cur[1] = pSrc[1];
             }
-            pOut_buf_cur += counter;
+            pOut_buf_cur = pOut_buf_cur.offset(counter);
           }
         }
       }
-      if (r.m_final & 1) as bool {break;}
+      if (r.m_final & 1) > 0 {break;}
     }
     if (decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER)
     {
-      TINFL_SKIP_BITS!(32, num_bits & 7); counter = 0; while counter < 4 { let s: mz_uint; if (num_bits) {TINFL_GET_BITS!(41, s, 8);} else {TINFL_GET_BYTE!(42, s);}; r.m_z_adler32 = (r.m_z_adler32 << 8) | s; counter+=1; }
+      TINFL_SKIP_BITS!(32, num_bits & 7);
+      counter = 0;
+      while counter < 4 {
+        let s: c_uint;
+        if num_bits > 0 {TINFL_GET_BITS!(41, s, 8);} else {TINFL_GET_BYTE!(42, s);};
+        r.m_z_adler32 = (r.m_z_adler32 << 8) | s;
+        counter+=1;
+      }
     }
-    TINFL_CR_RETURN_FOREVER!(34, TINFL_STATUS_DONE); */
+    TINFL_CR_RETURN_FOREVER!(34, TINFL_STATUS_DONE); // */
   // TINFL_CR_FINISH
   }
 
@@ -1046,8 +1096,8 @@ unsafe fn tdefl_start_dynamic_block(d: &mut tdefl_compressor)
   let mut i: uint;
   let total_code_sizes_to_pack: uint;
   let mut num_packed_code_sizes: uint = 0;
-  let mut rle_z_count: mz_uint = 0;
-  let mut rle_repeat_count: mz_uint = 0;
+  let mut rle_z_count: c_uint = 0;
+  let mut rle_repeat_count: c_uint = 0;
   let mut packed_code_sizes_index: uint = 0;
   let mut code_sizes_to_pack = [0u8, ..TDEFL_MAX_HUFF_SYMBOLS_0 + TDEFL_MAX_HUFF_SYMBOLS_1];
   let mut packed_code_sizes = [0u8, ..TDEFL_MAX_HUFF_SYMBOLS_0 + TDEFL_MAX_HUFF_SYMBOLS_1];
@@ -1331,13 +1381,13 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
 #[cfg(not(all(target_arch = "x86_64", target_endian = "little")))]
 unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
 {
-  let flags: mz_uint = 1;
+  let flags: c_uint = 1;
   let pLZ_codes: *const u8 = d.m_lz_code_buf;
 
   macro_rules! TDEFL_PUT_BITS( ($b:expr, $l:expr) =>
     ({
-      let bits: mz_uint = $b;
-      let len: mz_uint = $l;
+      let bits: c_uint = $b;
+      let len: c_uint = $l;
       assert!(bits <= ((1u << len) - 1u));
       d.m_bit_buffer |= (bits << d.m_bits_in); d.m_bits_in += len;
       while d.m_bits_in >= 8 {
@@ -1359,8 +1409,8 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
     }
     if (flags & 1)
     {
-      let sym: mz_uint; let num_extra_bits: mz_uint;
-      let match_len: mz_uint = pLZ_codes[0]; let match_dist: mz_uint = (pLZ_codes[1] | (pLZ_codes[2] << 8)); pLZ_codes += 3;
+      let sym: c_uint; let num_extra_bits: c_uint;
+      let match_len: c_uint = pLZ_codes[0]; let match_dist: c_uint = (pLZ_codes[1] | (pLZ_codes[2] << 8)); pLZ_codes += 3;
 
       assert!(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
       TDEFL_PUT_BITS!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
@@ -1380,7 +1430,7 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
     }
     else
     {
-      let lit: mz_uint = *pLZ_codes; pLZ_codes+=1;
+      let lit: c_uint = *pLZ_codes; pLZ_codes+=1;
       assert!(d.m_huff_code_sizes[0][lit]);
       TDEFL_PUT_BITS!(d.m_huff_codes[0][lit], d.m_huff_code_sizes[0][lit]);
     }
@@ -1488,13 +1538,13 @@ unsafe fn tdefl_flush_block(d: &mut tdefl_compressor, flush: tdefl_flush) -> tde
     {
       if d.m_bits_in != 0 { TDEFL_PUT_BITS!(0, 8 - d.m_bits_in); }
       if d.m_flags.contains(TDEFL_WRITE_ZLIB_HEADER) {
-        let mut i: mz_uint = 0; let mut a: mz_uint = d.m_adler32;
+        let mut i: c_uint = 0; let mut a: c_uint = d.m_adler32;
         while i < 4 { TDEFL_PUT_BITS!((a as u64 >> 24) & 0xFF, 8); a <<= 8; i+=1; }
       }
     }
     else
     {
-      let mut i: mz_uint = 2; let mut z: u64 = 0; TDEFL_PUT_BITS!(0, 3);
+      let mut i: c_uint = 2; let mut z: u64 = 0; TDEFL_PUT_BITS!(0, 3);
       if d.m_bits_in != 0 { TDEFL_PUT_BITS!(0, 8 - d.m_bits_in); }
       while i > 0 { TDEFL_PUT_BITS!(z & 0xFFFF, 16); i -= 1; z ^= 0xFFFF; }
     }
@@ -1614,13 +1664,13 @@ unsafe fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: uint, max_di
 #[inline(always)]
 fn tdefl_find_match(d: &mut tdefl_compressor, lookahead_pos: uint, max_dist: uint, max_match_len: uint, pMatch_dist: &mut uint, pMatch_len: &mut uint)
 {
-  let dist: mz_uint;
-  let pos: mz_uint = lookahead_pos & TDEFL_LZ_DICT_SIZE_MASK;
-  let match_len: mz_uint = *pMatch_len;
-  let probe_pos: mz_uint = pos;
-  let next_probe_pos: mz_uint;
-  let probe_len: mz_uint;
-  let num_probes_left: mz_uint = d.m_max_probes[match_len >= 32];
+  let dist: c_uint;
+  let pos: c_uint = lookahead_pos & TDEFL_LZ_DICT_SIZE_MASK;
+  let match_len: c_uint = *pMatch_len;
+  let probe_pos: c_uint = pos;
+  let next_probe_pos: c_uint;
+  let probe_len: c_uint;
+  let num_probes_left: c_uint = d.m_max_probes[match_len >= 32];
   let s: *const u8 = d.m_dict + pos;
   let p: *const u8;
   let q: *const u8;
