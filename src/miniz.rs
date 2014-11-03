@@ -310,16 +310,6 @@ struct tdefl_compressor <'a>
 
 // ------------------- End of Header: Implementation follows. (If you only want the header, define MINIZ_HEADER_FILE_ONLY.)
 
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
-  macro_rules! MZ_READ_LE16( ($p:expr) => (*(($p) as *const u16)); )
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
-  macro_rules! MZ_READ_LE32( ($p:expr) => (*(($p) as *const u32)); )
-
-#[cfg(not(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little")))]
-  macro_rules! MZ_READ_LE16( ($p:expr) => ((u32)((($p) as *const u8)[0]) | ((u32)((($p) as *const u8)[1]) << 8u)) )
-#[cfg(not(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little")))]
-  macro_rules! MZ_READ_LE32( ($p:expr) => ((u32)((($p) as *const u8)[0]) | ((u32)((($p) as *const u8)[1]) << 8u) | ((u32)((($p) as *const u8)[2]) << 16u) | ((u32)((($p) as *const u8)[3]) << 24u)) )
-
 // ------------------- zlib-style API's
 
 /// Adler-32 checksum algorithm
@@ -356,6 +346,16 @@ fn mz_crc32(crc: u32, buf: Option<&[u8]>) -> u32
 }
 
 // ------------------- Low-level Decompression (completely independent from all compression API's)
+
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
+macro_rules! MZ_READ_LE16( ($p:expr) => (*(($p) as *const u16)); )
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little"))]
+macro_rules! MZ_READ_LE32( ($p:expr) => (*(($p) as *const u32)); )
+
+#[cfg(not(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little")))]
+macro_rules! MZ_READ_LE16( ($p:expr) => ((u32)((($p) as *const u8)[0]) | ((u32)((($p) as *const u8)[1]) << 8u)) )
+#[cfg(not(all(any(target_arch = "x86", target_arch = "x86_64"), target_endian = "little")))]
+macro_rules! MZ_READ_LE32( ($p:expr) => ((u32)((($p) as *const u8)[0]) | ((u32)((($p) as *const u8)[1]) << 8u) | ((u32)((($p) as *const u8)[2]) << 16u) | ((u32)((($p) as *const u8)[3]) << 24u)) )
 
 // #define TINFL_CR_BEGIN switch(r->m_state) { case 0:
 // #define TINFL_CR_FINISH }
