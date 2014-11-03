@@ -158,13 +158,13 @@ impl tinfl_huff_table {
 }
 
 #[cfg(target_word_size = "64")]
-  type tinfl_bit_buf_t = u64;
+type tinfl_bit_buf_t = u64;
 #[cfg(target_word_size = "64")]
-  const TINFL_BITBUF_SIZE: uint = (64);
+const TINFL_BITBUF_SIZE: uint = (64);
 #[cfg(not(target_word_size = "64"))]
-  type tinfl_bit_buf_t = u32;
+type tinfl_bit_buf_t = u32;
 #[cfg(not(target_word_size = "64"))]
-  const TINFL_BITBUF_SIZE: uint = (32);
+const TINFL_BITBUF_SIZE: uint = (32);
 
 struct tinfl_decompressor
 {
@@ -985,7 +985,7 @@ pub fn tinfl_decompress_mem_to_callback(in_buf: &[u8], put_buf_func: tinfl_put_b
 // ------------------- Low-level Compression (independent from all decompression API's)
 
 // Purposely making these tables static for faster init and thread safety.
-const s_tdefl_len_sym: [u16, ..256] = [
+const S_TDEFL_LEN_SYM: [u16, ..256] = [
   257,258,259,260,261,262,263,264,265,265,266,266,267,267,268,268,269,269,269,269,270,270,270,270,271,271,271,271,272,272,272,272,
   273,273,273,273,273,273,273,273,274,274,274,274,274,274,274,274,275,275,275,275,275,275,275,275,276,276,276,276,276,276,276,276,
   277,277,277,277,277,277,277,277,277,277,277,277,277,277,277,277,278,278,278,278,278,278,278,278,278,278,278,278,278,278,278,278,
@@ -995,13 +995,13 @@ const s_tdefl_len_sym: [u16, ..256] = [
   283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,283,
   284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,284,285 ];
 
-const s_tdefl_len_extra: [u8, ..256] = [
+const S_TDEFL_LEN_EXTRA: [u8, ..256] = [
   0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
   4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
   5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
   5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0 ];
 
-const s_tdefl_small_dist_sym: [u8, ..512] = [
+const S_TDEFL_SMALL_DIST_SYM: [u8, ..512] = [
   0,1,2,3,4,4,5,5,6,6,6,6,7,7,7,7,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,
   11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,
   13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,14,14,14,14,14,14,14,14,14,14,14,14,
@@ -1015,7 +1015,7 @@ const s_tdefl_small_dist_sym: [u8, ..512] = [
   17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,
   17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17 ];
 
-const s_tdefl_small_dist_extra: [u8, ..512] = [
+const S_TDEFL_SMALL_DIST_EXTRA: [u8, ..512] = [
   0,0,0,0,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,
   5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
   6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
@@ -1025,12 +1025,12 @@ const s_tdefl_small_dist_extra: [u8, ..512] = [
   7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
   7,7,7,7,7,7,7,7 ];
 
-const s_tdefl_large_dist_sym: [u8, ..128] = [
+const S_TDEFL_LARGE_DIST_SYM: [u8, ..128] = [
   0,0,18,19,20,20,21,21,22,22,22,22,23,23,23,23,24,24,24,24,24,24,24,24,25,25,25,25,25,25,25,25,26,26,26,26,26,26,26,26,26,26,26,26,
   26,26,26,26,27,27,27,27,27,27,27,27,27,27,27,27,27,27,27,27,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,
   28,28,28,28,28,28,28,28,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29 ];
 
-const s_tdefl_large_dist_extra: [u8, ..128] = [
+const S_TDEFL_LARGE_DIST_EXTRA: [u8, ..128] = [
   0,0,8,8,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,
   12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,
   13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13 ];
@@ -1325,7 +1325,7 @@ unsafe fn tdefl_start_static_block(d: &mut tdefl_compressor)
   TDEFL_PUT_BITS!(1, 2);
 }
 
-const mz_bitmasks: [u16, ..17] = [ 0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF ];
+const MZ_BITMASKS: [u16, ..17] = [ 0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF ];
 
 #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
 unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
@@ -1374,21 +1374,21 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let match_len: uint = *(pLZ_codes.offset(0)) as uint;
       let match_dist: uint = *(pLZ_codes.offset(1) as *const u16) as uint; pLZ_codes = pLZ_codes.offset(3);
 
-      assert!(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len] as uint] != 0);
-      TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][s_tdefl_len_sym[match_len] as uint], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len] as uint] as uint);
-      TDEFL_PUT_BITS_FAST!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len] as uint] as uint, s_tdefl_len_extra[match_len] as uint);
+      assert!(d.m_huff_code_sizes[0][S_TDEFL_LEN_SYM[match_len] as uint] != 0);
+      TDEFL_PUT_BITS_FAST!(d.m_huff_codes[0][S_TDEFL_LEN_SYM[match_len] as uint], d.m_huff_code_sizes[0][S_TDEFL_LEN_SYM[match_len] as uint] as uint);
+      TDEFL_PUT_BITS_FAST!(match_len & MZ_BITMASKS[S_TDEFL_LEN_EXTRA[match_len] as uint] as uint, S_TDEFL_LEN_EXTRA[match_len] as uint);
 
       // This sequence coaxes MSVC into using cmov's vs. jmp's.
-      let s0: u8 = s_tdefl_small_dist_sym[match_dist & 511];
-      let s1: u8 = s_tdefl_small_dist_extra[match_dist & 511];
-      let n0: u8 = s_tdefl_large_dist_sym[match_dist >> 8];
-      let n1: u8 = s_tdefl_large_dist_extra[match_dist >> 8];
+      let s0: u8 = S_TDEFL_SMALL_DIST_SYM[match_dist & 511];
+      let s1: u8 = S_TDEFL_SMALL_DIST_EXTRA[match_dist & 511];
+      let n0: u8 = S_TDEFL_LARGE_DIST_SYM[match_dist >> 8];
+      let n1: u8 = S_TDEFL_LARGE_DIST_EXTRA[match_dist >> 8];
       let sym: uint = if match_dist < 512 {s0} else {s1} as uint;
       let num_extra_bits: uint = if match_dist < 512 {n0} else {n1} as uint;
 
       assert!(d.m_huff_code_sizes[1][sym] != 0);
       TDEFL_PUT_BITS_FAST!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym] as uint);
-      TDEFL_PUT_BITS_FAST!(match_dist & mz_bitmasks[num_extra_bits] as uint, num_extra_bits);
+      TDEFL_PUT_BITS_FAST!(match_dist & MZ_BITMASKS[num_extra_bits] as uint, num_extra_bits);
     }
     else
     {
@@ -1435,7 +1435,7 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
   while bits_in != 0
   {
     let n: uint = min(bits_in, 16);
-    TDEFL_PUT_BITS!((bit_buffer) & mz_bitmasks[n] as u64, n);
+    TDEFL_PUT_BITS!((bit_buffer) & MZ_BITMASKS[n] as u64, n);
     bit_buffer >>= n;
     bits_in -= n;
   }
@@ -1478,21 +1478,21 @@ unsafe fn tdefl_compress_lz_codes(d: &mut tdefl_compressor) -> bool
       let sym: c_uint; let num_extra_bits: c_uint;
       let match_len: c_uint = pLZ_codes[0]; let match_dist: c_uint = (pLZ_codes[1] | (pLZ_codes[2] << 8)); pLZ_codes += 3;
 
-      assert!(d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS!(d.m_huff_codes[0][s_tdefl_len_sym[match_len]], d.m_huff_code_sizes[0][s_tdefl_len_sym[match_len]]);
-      TDEFL_PUT_BITS!(match_len & mz_bitmasks[s_tdefl_len_extra[match_len]], s_tdefl_len_extra[match_len]);
+      assert!(d.m_huff_code_sizes[0][S_TDEFL_LEN_SYM[match_len]]);
+      TDEFL_PUT_BITS!(d.m_huff_codes[0][S_TDEFL_LEN_SYM[match_len]], d.m_huff_code_sizes[0][S_TDEFL_LEN_SYM[match_len]]);
+      TDEFL_PUT_BITS!(match_len & MZ_BITMASKS[S_TDEFL_LEN_EXTRA[match_len]], S_TDEFL_LEN_EXTRA[match_len]);
 
       if (match_dist < 512)
       {
-        sym = s_tdefl_small_dist_sym[match_dist]; num_extra_bits = s_tdefl_small_dist_extra[match_dist];
+        sym = S_TDEFL_SMALL_DIST_SYM[match_dist]; num_extra_bits = S_TDEFL_SMALL_DIST_EXTRA[match_dist];
       }
       else
       {
-        sym = s_tdefl_large_dist_sym[match_dist >> 8]; num_extra_bits = s_tdefl_large_dist_extra[match_dist >> 8];
+        sym = S_TDEFL_LARGE_DIST_SYM[match_dist >> 8]; num_extra_bits = S_TDEFL_LARGE_DIST_EXTRA[match_dist >> 8];
       }
       assert!(d.m_huff_code_sizes[1][sym]);
       TDEFL_PUT_BITS!(d.m_huff_codes[1][sym], d.m_huff_code_sizes[1][sym]);
-      TDEFL_PUT_BITS!(match_dist & mz_bitmasks[num_extra_bits], num_extra_bits);
+      TDEFL_PUT_BITS!(match_dist & MZ_BITMASKS[num_extra_bits], num_extra_bits);
     }
     else
     {
@@ -1864,11 +1864,11 @@ unsafe fn tdefl_compress_fast(d: &mut tdefl_compressor) -> bool
           pLZ_code_buf = pLZ_code_buf.offset(3);
           *pLZ_flags = ((*pLZ_flags >> 1) | 0x80) as u8;
 
-          s0 = s_tdefl_small_dist_sym[cur_match_dist & 511] as uint;
-          s1 = s_tdefl_large_dist_sym[cur_match_dist >> 8] as uint;
+          s0 = S_TDEFL_SMALL_DIST_SYM[cur_match_dist & 511] as uint;
+          s1 = S_TDEFL_LARGE_DIST_SYM[cur_match_dist >> 8] as uint;
           d.m_huff_count[1][if cur_match_dist < 512 {s0} else {s1}]+=1;
 
-          d.m_huff_count[0][s_tdefl_len_sym[cur_match_len - TDEFL_MIN_MATCH_LEN] as uint]+=1;
+          d.m_huff_count[0][S_TDEFL_LEN_SYM[cur_match_len - TDEFL_MIN_MATCH_LEN] as uint]+=1;
         }
       }
       else
@@ -1965,11 +1965,11 @@ unsafe fn tdefl_record_match(d: &mut tdefl_compressor, match_len: uint, mut matc
   *d.m_pLZ_flags = ((*d.m_pLZ_flags >> 1) | 0x80) as u8; d.m_num_flags_left -= 1;
   if d.m_num_flags_left == 0 { d.m_num_flags_left = 8; d.m_pLZ_flags = d.m_pLZ_code_buf; d.m_pLZ_code_buf = d.m_pLZ_code_buf.offset(1); }
 
-  s0 = s_tdefl_small_dist_sym[match_dist & 511];
-  s1 = s_tdefl_large_dist_sym[(match_dist >> 8) & 127];
+  s0 = S_TDEFL_SMALL_DIST_SYM[match_dist & 511];
+  s1 = S_TDEFL_LARGE_DIST_SYM[(match_dist >> 8) & 127];
   d.m_huff_count[1][if match_dist < 512 {s0} else {s1} as uint] += 1;
 
-  if match_len >= TDEFL_MIN_MATCH_LEN {d.m_huff_count[0][s_tdefl_len_sym[match_len - TDEFL_MIN_MATCH_LEN] as uint] += 1;}
+  if match_len >= TDEFL_MIN_MATCH_LEN {d.m_huff_count[0][S_TDEFL_LEN_SYM[match_len - TDEFL_MIN_MATCH_LEN] as uint] += 1;}
 }
 
 unsafe fn tdefl_compress_normal(d: &mut tdefl_compressor) -> bool
