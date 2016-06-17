@@ -48,21 +48,23 @@
      #define MINIZ_HAS_64BIT_REGISTERS 1
 */
 
-#![feature(macro_rules, slicing_syntax, globs, unboxed_closures, if_let, asm)]
+#![feature(macro_rules, slicing_syntax, globs, unboxed_closures, if_let, asm, fn_traits)]
 #![crate_type = "lib"]
 #![allow(non_camel_case_types, non_snake_case)]
 
 extern crate libc;
+#[macro_use]
+extern crate bitflags;
 
 mod tdefl;
 mod tinfl;
 
 trait SizeOf {
-    fn size_of(&self) -> uint;
+    fn size_of(&self) -> usize;
 }
 
 impl <T> SizeOf for T {
-    fn size_of(&self) -> uint {
+    fn size_of(&self) -> usize {
         use std::mem::{size_of};
         return size_of::<T>();
     }
@@ -81,12 +83,12 @@ const MZ_CRC32_INIT: u32 = (0);
 enum CompressionStrategies { MZ_DEFAULT_STRATEGY = 0, MZ_FILTERED = 1, MZ_HUFFMAN_ONLY = 2, MZ_RLE = 3, MZ_FIXED = 4 }
 
 // Method
-const MZ_DEFLATED: int = 8;
+const MZ_DEFLATED: isize = 8;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: uint = 1;
+const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: usize = 1;
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: uint = 0;
+const MINIZ_USE_UNALIGNED_LOADS_AND_STORES: usize = 0;
 
 // ------------------- End of Header: Implementation follows. (If you only want the header, define MINIZ_HEADER_FILE_ONLY.)
 
@@ -99,12 +101,12 @@ fn mz_adler32(adler: u32, buf: Option<&[u8]>) -> u32
   let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_ADLER32_INIT };
   let mut s1: u32 = (adler & 0xffff) as u32;
   let mut s2: u32 = (adler >> 16) as u32;
-  let mut block_len: uint = buf.len() % 5552u;
+  let mut block_len: usize = buf.len() % 5552;
   while buf.len() > 0 {
     for i in buf[..block_len].iter() {
       s1 += *i as u32; s2 += s1;
     }
-    s1 %= 65521u32; s2 %= 65521u32; buf = buf[block_len..]; block_len = 5552u;
+    s1 %= 65521u32; s2 %= 65521u32; buf = &buf[block_len..]; block_len = 5552usize;
   }
   return ((s2 << 16) + s1) as u32;
 }
@@ -114,13 +116,13 @@ fn mz_adler32(adler: u32, buf: Option<&[u8]>) -> u32
 fn mz_crc32(crc: u32, buf: Option<&[u8]>) -> u32
 {
   let mut buf: &[u8] = match buf { Some(x) => x, None => return MZ_CRC32_INIT };
-  let s_crc32: [u32, ..16] = [ 0, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+  let s_crc32: [u32; 16] = [ 0, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
     0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c ];
   let mut crcu32: u32 = crc as u32;
   crcu32 = !crcu32;
   for b in buf.iter() {
-    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b & 0xF)) as uint];
-    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b >> 4)) as uint];
+    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b & 0xF)) as usize];
+    crcu32 = (crcu32 >> 4) ^ s_crc32[((crcu32 as u8 & 0xF) ^ (*b >> 4)) as usize];
   }
   return !crcu32;
 }
